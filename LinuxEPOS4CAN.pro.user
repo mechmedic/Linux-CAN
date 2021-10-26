@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE QtCreatorProject>
-<!-- Written by QtCreator 4.8.0, 2021-01-07T18:00:05. -->
+<!-- Written by QtCreator 4.8.0, 2021-07-10T01:00:04. -->
 <qtcreator>
  <data>
   <variable>EnvironmentId</variable>
@@ -338,8 +338,8 @@
     <value type="int" key="PE.EnvironmentAspect.Base">1</value>
     <valuelist type="QVariantList" key="PE.EnvironmentAspect.Changes"/>
     <value type="QString" key="ProjectExplorer.ProjectConfiguration.DefaultDisplayName">LinuxEPOS4CAN (on raspberry_pi)</value>
-    <value type="QString" key="ProjectExplorer.ProjectConfiguration.DisplayName"></value>
-    <value type="QString" key="ProjectExplorer.ProjectConfiguration.Id">RemoteLinuxRunConfiguration:/home/chunwoo/ChunTest/LinuxEPOS4CAN/LinuxEPOS4CAN.pro</value>
+    <value type="QString" key="ProjectExplorer.ProjectConfiguration.DisplayName">LinuxEPOS4CAN (on raspberry_pi)2</value>
+    <value type="QString" key="ProjectExplorer.ProjectConfiguration.Id">RemoteLinuxRunConfiguration:/home/chunwoo/ChunGit/Linux-CAN/LinuxEPOS4CAN.pro</value>
     <value type="int" key="RemoteLinux.EnvironmentAspect.Version">1</value>
     <value type="QString" key="RemoteLinux.RunConfig.AlternateRemoteExecutable"></value>
     <value type="bool" key="RemoteLinux.RunConfig.UseAlternateRemoteExecutable">false</value>
