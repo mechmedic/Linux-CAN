@@ -10,8 +10,8 @@ SOURCES += \
     windowsusb2can.cpp
 
 HEADERS += \
+    CANopenDefs.h \
     linuxsocketcan.h \
-    candefines.h \
     EposCAN.h \
     windowsusb2can.h
 

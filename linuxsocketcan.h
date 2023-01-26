@@ -31,7 +31,7 @@
 #include <string>
 
 // CKim - Common header file for CAN class
-#include "candefines.h"
+#include "CANopenDefs.h"
 
 
 // CKim - Forward declaration of the EPOS motor controller class. CAN interface needs to

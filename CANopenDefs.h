@@ -7,8 +7,8 @@
 
 #include <stdint.h>
 
-#ifndef CANDEFINES_H
-#define CANDEFINES_H
+#ifndef CANOPENDEFS_H
+#define CANOPENDEFS_H
 
 #define SDO_READ    0
 #define SDO_WRITE   1
@@ -64,4 +64,4 @@ inline uint8_t SDO_calculate_ccs(char rw, int size)
     return 0;
 };
 
-#endif // CANDEFINES_H
+#endif // CANOPENDEFS_H
