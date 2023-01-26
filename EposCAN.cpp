@@ -12,7 +12,6 @@ EposCAN::EposCAN(int n)
 {
     m_nodeId = n;
 
-
     //    // ---------------------------------------------------------------
     //    // CKim - Launch CAN Read Thread
     //    pthread_create(&m_hReadThrd, NULL, LinuxSocketCAN::CAN_ReadThread, 0);
@@ -21,26 +20,9 @@ EposCAN::EposCAN(int n)
 
 EposCAN::~EposCAN()
 {
-    //close(m_hd);
-}
-
-// CKim - PC (client) sends SDO packets to EPOS (server) to write the dictionary of the EPOS
-int EposCAN::SDO_write(SDO_data* d)
-{
-    int ret = m_CANport.SendSDO(d,SDO_WRITE);
-
-    if(ret==-1) {   return 1;   }
-    else        {   return 0;   }
 
 }
 
-// CKim - PC (client) sends SDO packets to EPOS (server) to read the dictionary of the EPOS
-int EposCAN::SDO_read(SDO_data* d)
-{
-    int ret = m_CANport.SendSDO(d,SDO_READ);
-    if(ret==-1) {   return 1;   }
-    else        {   return 0;   }
-}
 
 // CKim - Enable EPOS.
 int EposCAN::EnableDevice()
@@ -53,20 +35,20 @@ int EposCAN::EnableDevice()
     // CKim - "Switch On Disabled" -> "Ready to Switch On" transition happens when
     // Lower Bytes of Controlword (idx 0x6040) is set to 0xxx x110. For example 0000 0110 = 0x06
     pack.nodeid = m_nodeId;	 pack.index = 0x6040;	pack.subindex = 0x00;	pack.sz = 2;	pack.data = 0x0006;
-    if (!SDO_write(&pack))	{}
-    else						{ return -1; }
+    if(!SDO_write(&pack)) {}
+    else    {   return -1;   }
 
     // CKim -  "Ready to Switch On" -> "Switched On" transition happens when
     // Lower Bytes of Controlword (idx 0x6040) is set to 0xxx x111. For example 0000 0111 = 0x07
     pack.nodeid = m_nodeId;	 pack.index = 0x6040;	pack.subindex = 0x00;	pack.sz = 2;	pack.data = 0x0007;
-    if (!SDO_write(&pack))	{}
-    else						{ return -1; }
+    if(!SDO_write(&pack)) {}
+    else    {   return -1;   }
 
     // CKim -  "Switched On" -> "Enable" transition happens when
     // Lower Bytes of Controlword (idx 0x6040) is set to 0xxx x111. For example 0000 0111 = 0x0F
     pack.nodeid = m_nodeId;	 pack.index = 0x6040;	pack.subindex = 0x00;	pack.sz = 2;	pack.data = 0x000F;
-    if (!SDO_write(&pack))	{}
-    else						{ return -1; }
+    if(!SDO_write(&pack)) {}
+    else    {   return -1;   }
 
     return 0;
 }
@@ -77,25 +59,25 @@ int EposCAN::DisableDevice()
     // CKim - To turn off the device, state must be transited to
     // "Enable" -> "Switched On" -> "Ready to Switch On" -> "Switch On Disabled"
     // by writing appropriate Control word (0x6040)
-    SDO_data pack;
+    SDO_data pack;  int ret;
 
     // CKim - "Enable" -> "Switched On" transition (torque is disabled) happens when
     // Lower Bytes of Controlword (idx 0x6040) is set to 0xxx 0111. For example 0000 0111 = 0x07
     pack.nodeid = m_nodeId;	 pack.index = 0x6040;	pack.subindex = 0x00;	pack.sz = 2;	pack.data = 0x0007;
-    if (!SDO_write(&pack))	{}
-    else						{ return -1; }
+    if(!SDO_write(&pack)) {}
+    else    {   return -1;   }
 
     // CKim -  "Switched On" -> "Ready to Switch On" transition (power is disabled) happens when
     // Lower Bytes of Controlword (idx 0x6040) is set to 0xxx x110. For example 0000 0110 = 0x06
     pack.nodeid = m_nodeId;	 pack.index = 0x6040;	pack.subindex = 0x00;	pack.sz = 2;	pack.data = 0x0006;
-    if (!SDO_write(&pack))	{}
-    else						{ return -1; }
+    if(!SDO_write(&pack)) {}
+    else    {   return -1;   }
 
     // CKim - "Ready to Switch On" -> "Switch On Disabled" transition happens when
     // Lower Bytes of Controlword (idx 0x6040) is set to 0xxx xx0x. For example 0000 0000 = 0x00
     pack.nodeid = m_nodeId;	 pack.index = 0x6040;	pack.subindex = 0x00;	pack.sz = 2;	pack.data = 0x0000;
-    if (!SDO_write(&pack))	{}
-    else						{ return -1; }
+    if(!SDO_write(&pack)) {}
+    else    {   return -1;   }
 
     return 0;
 }
@@ -103,19 +85,20 @@ int EposCAN::DisableDevice()
 // CKim - Set Operating modes needs to be updated for EPOS4
 int EposCAN::SetOperationMode(int mode)
 {
-    SDO_data pack;
+    SDO_data pack;      int ret;
     pack.nodeid = m_nodeId;	 pack.index = 0x6060;	pack.subindex = 0x00;	pack.sz = 1;
 
     if ((mode == HOMING) || (mode == PROFILE_POS) || (mode == PROFILE_VEL) || (mode == POSITION)
         || (mode == VELOCITY) || (mode == CURRENT) || (mode == SYNC_POS) || (mode == SYNC_VEL) || (mode == SYNC_TRQ))
     {
         pack.data = mode;
-        if (!SDO_write(&pack))
+        ret = m_CANport.SendSDO(&pack,SDO_WRITE);
+        if (ret!=0) {   return -1;   }
+        else
         {
             m_mode = mode;
             return 0;
         }
-        else { return -1; }
     }
     else
     {
@@ -143,46 +126,29 @@ uint16_t EposCAN::ReadStatusWord()
     else	{ return -1; }
 }
 
+int EposCAN::ReadPosition()
+{
+    SDO_data pack;
+    pack.nodeid = m_nodeId;
+
+    pack.index = 0x6064;	pack.subindex = 0x00;
+    if (!SDO_read(&pack))	{ return pack.data; }
+    else	{ return -1; }
+}
+
+int EposCAN::HaltAxis()
+{
+    SDO_data pack;
+
+    // CKim - Set bit 8 of the control word to stop motion
+    pack.nodeid = m_nodeId;	 pack.index = 0x6040;	pack.subindex = 0x00;	pack.sz = 2;
+    pack.data = 0x010F;
+
+    if (!SDO_write(&pack))	{ return 0; }
+    else					{ return -1; }
+}
+
 // -----------------------------------------
-int EposCAN::GetPositionControlGain(uint16_t& P, uint16_t& I, uint16_t& D)
-{
-	SDO_data pack;
-	pack.nodeid = m_nodeId;	 pack.index = 0x60FB;	pack.subindex = 0x01;
-
-	// returns 0 when successful
-	if (!SDO_read(&pack))	{ P = pack.data; }
-	else	{ return -1; }
-
-	pack.subindex = 0x02;
-	if (!SDO_read(&pack))	{ I = pack.data; }
-	else	{ return -1; }
-
-	pack.subindex = 0x03;
-	if (!SDO_read(&pack))	{ D = pack.data; }
-	else	{ return -1; }
-	return 0;
-}
-
-int EposCAN::SetPositionControlGain(const uint16_t& P, const uint16_t& I, const uint16_t& D)
-{
-	SDO_data pack;
-	pack.nodeid = m_nodeId;	 pack.index = 0x60FB;	pack.sz = 2;
-	// returns 0 when successful
-
-	pack.subindex = 0x01;		pack.data = P;
-	if (!SDO_write(&pack))	{}
-	else	{ return -1; }
-
-	pack.subindex = 0x02;		pack.data = I;
-	if (!SDO_write(&pack))	{}
-	else	{ return -1; }
-
-	pack.subindex = 0x03;		pack.data = D;
-	if (!SDO_write(&pack))	{}
-	else	{ return -1; }
-	return 0;
-}
-
 int EposCAN::GetPositionProfileParam(ProfilePosParam& P)
 {
     SDO_data pack;
@@ -282,18 +248,6 @@ int EposCAN::MovePosProfile(int32_t pos, bool rel)
     else					{ return -1; }
 }
 
-int EposCAN::HaltAxis()
-{
-    SDO_data pack;
-
-    // CKim - Set bit 8 of the control word to stop motion
-    pack.nodeid = m_nodeId;	 pack.index = 0x6040;	pack.subindex = 0x00;	pack.sz = 2;
-    pack.data = 0x010F;
-
-    if (!SDO_write(&pack))	{ return 0; }
-    else					{ return -1; }
-}
-
 int EposCAN::WaitForMotionCompletion(long timeoutmsec)
 {
     long sec = timeoutmsec/1000;
@@ -311,15 +265,45 @@ int EposCAN::WaitForMotionCompletion(long timeoutmsec)
     return 1;
 }
 
-int EposCAN::ReadPosition()
+int EposCAN::GetPositionControlGain(uint16_t& P, uint16_t& I, uint16_t& D)
 {
     SDO_data pack;
-    pack.nodeid = m_nodeId;
+    pack.nodeid = m_nodeId;	 pack.index = 0x60FB;	pack.subindex = 0x01;
 
-    pack.index = 0x6064;	pack.subindex = 0x00;
-    if (!SDO_read(&pack))	{ return pack.data; }
+    // returns 0 when successful
+    if (!SDO_read(&pack))	{ P = pack.data; }
     else	{ return -1; }
+
+    pack.subindex = 0x02;
+    if (!SDO_read(&pack))	{ I = pack.data; }
+    else	{ return -1; }
+
+    pack.subindex = 0x03;
+    if (!SDO_read(&pack))	{ D = pack.data; }
+    else	{ return -1; }
+    return 0;
 }
+
+int EposCAN::SetPositionControlGain(const uint16_t& P, const uint16_t& I, const uint16_t& D)
+{
+    SDO_data pack;
+    pack.nodeid = m_nodeId;	 pack.index = 0x60FB;	pack.sz = 2;
+    // returns 0 when successful
+
+    pack.subindex = 0x01;		pack.data = P;
+    if (!SDO_write(&pack))	{}
+    else	{ return -1; }
+
+    pack.subindex = 0x02;		pack.data = I;
+    if (!SDO_write(&pack))	{}
+    else	{ return -1; }
+
+    pack.subindex = 0x03;		pack.data = D;
+    if (!SDO_write(&pack))	{}
+    else	{ return -1; }
+    return 0;
+}
+
 // -----------------------------------------
 
 // -----------------------------------------
@@ -384,7 +368,6 @@ int EposCAN::SetVelocityProfileParam(const ProfileVelParam& P)
     return 0;
 }
 
-// CKim - Move in target velocity
 int EposCAN::MoveVelProfile(int32_t vel)
 {
     SDO_data pack;

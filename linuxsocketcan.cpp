@@ -26,19 +26,20 @@ int LinuxSocketCAN::OpenCANport(const char* portName)
     std::ostringstream ostr;
 
     // CKim - Return if already open
-    if(m_hd != -1)
-    {
-        ostr << "There is already an open CAN Port " << m_portName << std::endl;
+    if(m_hd != -1) {
+        ostr << "[SocketCAN] There is already an open CAN Port " << m_portName << std::endl;
         m_errMsg = ostr.str();
-        return 0;
+        std::cerr << m_errMsg;
+        return -1;
     }
 
-    // ---------------------------------------------------------------
-    // CKim - Open Socket for CAN communication, as it is done in the example for pi2can
+    // CKim - Open Socket for CAN communication
     m_hd = socket(PF_CAN, SOCK_RAW, CAN_RAW);
     if (m_hd < 0) {
-        perror("socket");
-        return 0;
+        ostr << "[SocketCAN] error during 'socket()'" << std::endl;
+        m_errMsg = ostr.str();
+        std::cerr << m_errMsg;
+        return -1;
     }
 
     // CKim - Configure sockaddr (Socket Address) structure for CAN sockets
@@ -47,20 +48,22 @@ int LinuxSocketCAN::OpenCANport(const char* portName)
     struct sockaddr_can addr;       addr.can_family = AF_CAN;
     struct ifreq ifr;               strcpy(ifr.ifr_name, portName);
     if (ioctl(m_hd, SIOCGIFINDEX, &ifr) < 0) {
-        perror("SIOCGIFINDEX");
-        return 0;
+        ostr << "[SocketCAN] error during 'SIOCGIFINDEX'" << std::endl;
+        m_errMsg = ostr.str();
+        std::cerr << m_errMsg;
+        return -1;
     }
     addr.can_ifindex = ifr.ifr_ifindex;
 
     // CKim - Bind address to the socket.
     if (bind(m_hd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-        perror("bind");
+        ostr << "[SocketCAN] error during 'bind()'" << std::endl;
+        m_errMsg = ostr.str();
+        std::cerr << m_errMsg;
         return -1;
     }
     m_portName = portName;
-    // ---------------------------------------------------------------
-
-    return 1;
+    return 0;
 }
 
 int LinuxSocketCAN::CloseCANport()
@@ -70,9 +73,10 @@ int LinuxSocketCAN::CloseCANport()
 
 int LinuxSocketCAN::SendSYNC()
 {
-    // CKim - Communication Object ID (COB-ID) of SYNC object
-    uint16_t cobIDforSYNC = 0x00000080;
+    std::ostringstream ostr;
 
+    // CKim - Communication Object ID (COB-ID) of SYNC object
+    uint16_t cobIDforSYNC = COBID_SYNC;
     struct can_frame frame;
     int nbytes;
 
@@ -82,11 +86,13 @@ int LinuxSocketCAN::SendSYNC()
     // CKim - Use write() on socket to send CAN data
     nbytes = write(m_hd, &frame, sizeof(frame));
     if (nbytes != sizeof(frame)) {
-        perror("write");
+        ostr << "[SocketCAN] error during 'write()" << std::endl;
+        m_errMsg = ostr.str();
+        std::cerr << m_errMsg;
         return -1;
     }
 
-    printf("SentSYNC\n");
+    std::cout << "[SocketCAN] SentSYNC" << std::endl;
     return 0;
 }
 
@@ -117,6 +123,8 @@ int LinuxSocketCAN::SendNMT(int state, int nodeId)
 
 int LinuxSocketCAN::SendSDO(SDO_data* sdo, int rw)
 {
+    std::ostringstream ostr;
+
     if( rw!=SDO_READ && rw!=SDO_WRITE ) {   return -1;  }
 
     // ------------------------------------------------------------
@@ -147,6 +155,9 @@ int LinuxSocketCAN::SendSDO(SDO_data* sdo, int rw)
         for(int i=0; i<4; i++)  {   sendFrame.data[4 + i] = 0;  }
     }
     else {
+        ostr << "[SocketCAN] Neither SDO_Write nor SDO_read" << std::endl;
+        m_errMsg = ostr.str();
+        std::cerr << m_errMsg;
         return -1;
     }
 
@@ -158,12 +169,13 @@ int LinuxSocketCAN::SendSDO(SDO_data* sdo, int rw)
     // CKim - Use write() on socket to send CAN data
     nbytes = write(m_hd, &sendFrame, sizeof(sendFrame));
     if (nbytes != sizeof(sendFrame)) {
-        //perror("write");
-        m_errMsg = "CAN frame write Error\n";
+        ostr << "[SocketCAN] CAN frame write Error" << std::endl;
+        m_errMsg = ostr.str();
+        std::cerr << m_errMsg;
         return -1;
     }
 
-    printf("SentSDO Packet. NodeID : 0x%04X  ObjIdx : 0x%04X\n",sendFrame.can_id, sdo->index);
+    printf("[SocketCAN] SentSDO Packet. NodeID : 0x%04X  ObjIdx : 0x%04X\n",sendFrame.can_id, sdo->index);
     // ------------------------------------------------------------
 
 
@@ -172,13 +184,17 @@ int LinuxSocketCAN::SendSDO(SDO_data* sdo, int rw)
     struct can_frame readFrame;         SDO_data rcvSdo;
     nbytes = read(m_hd,&readFrame,sizeof(struct can_frame));
     if (nbytes < 0) {
-        perror("can raw socket read");
+        ostr << "[SocketCAN] can raw socket read" << std::endl;
+        m_errMsg = ostr.str();
+        std::cerr << m_errMsg;
         return -1;
     }
 
     /* paranoid check ... */
     if (nbytes < sizeof(struct can_frame)) {
-        fprintf(stderr, "read: incomplete CAN frame\n");
+        ostr << "[SocketCAN] read: incomplete CAN frame" << std::endl;
+        m_errMsg = ostr.str();
+        std::cerr << m_errMsg;
         return -1;
     }
 
@@ -189,14 +205,16 @@ int LinuxSocketCAN::SendSDO(SDO_data* sdo, int rw)
     char str[128];
     if (rcvSdo.errcode != 0)
     {
-        sprintf(str, "SDO Receive Error : Device 0x%04X index 0x%04X, 0x%02X. Error code 0x%08X\n",
+        sprintf(str, "[SocketCAN] Error in received frame : Device 0x%04X index 0x%04X, 0x%02X. Error code 0x%08X\n",
             rcvSdo.nodeid, rcvSdo.index, rcvSdo.subindex, rcvSdo.errcode);
         m_errMsg = str;
+        std::cerr << m_errMsg;
         return -1;
     }
     else if ((sdo->nodeid != rcvSdo.nodeid) || (sdo->index != rcvSdo.index) || (sdo->subindex != rcvSdo.subindex))
     {
-        m_errMsg = "Wrong SDO reply index!\n";
+        m_errMsg = "[SocketCAN] Wrong SDO reply index!\n";
+        std::cerr << m_errMsg;
         return -1;
     }
     else
@@ -204,13 +222,13 @@ int LinuxSocketCAN::SendSDO(SDO_data* sdo, int rw)
          // CKim - On successful SDO receive
         if(rw == SDO_WRITE)
         {
-            printf("Write OK : Device 0x%04X index 0x%04X, 0x%02X. Data 0x%04X\n",
+            printf("[SocketCAN] Write OK : Device 0x%04X index 0x%04X, 0x%02X. Data 0x%04X\n",
                 sdo->nodeid, sdo->index, sdo->subindex, sdo->data);
         }
         if(rw == SDO_READ)
         {
             memcpy(sdo,&rcvSdo,sizeof(SDO_data));
-            printf("Read OK : Device 0x%04X index 0x%04X, 0x%02X. %d byte data is 0x%08X\n",
+            printf("[SocketCAN] Read OK : Device 0x%04X index 0x%04X, 0x%02X. %d byte data is 0x%08X\n",
                 sdo->nodeid, sdo->index, sdo->subindex, sdo->data);
         }
         return 0;
@@ -230,8 +248,9 @@ int LinuxSocketCAN::FrameToSdo(const struct can_frame& frame, SDO_data* sdo)
     // Return if the received frame is not SDO frame
     if ((id & SDO_TX) != SDO_TX)
     {
-        printf("Unknown COB-ID 0x%04X  ", id);
-        for (int i = 0; i < len; i++)	{   printf("0x%02X ", (unsigned char)buf[i]); }
+        printf("[SocketCAN] Unknown COB-ID 0x%04X  ", id);
+        for (int i = 0; i < len; i++)	{
+            printf("0x%02X ", (unsigned char)buf[i]); }
         printf("\n");
         return -1;
     }
@@ -251,7 +270,7 @@ int LinuxSocketCAN::FrameToSdo(const struct can_frame& frame, SDO_data* sdo)
     // CKim - Parse data
     int sz = 0;		int data = 0;	uint32_t errcode = 0;
     unsigned char key = ((unsigned char)buf[0] >> 4);
-    printf("0x%02X\n", key);
+    //printf("0x%02X\n", key);
 
     // CKim - Reply from SDO_Read. Save the data
     if (key == 4)

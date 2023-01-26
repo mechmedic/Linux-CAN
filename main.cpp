@@ -14,6 +14,98 @@ EposCAN* pDev[1];
 
 sem_t sema;
 
+int TestProfilePosition()
+{
+    // ---------------------------------------------------------------
+    // CKim - Enable Position Control Mode
+    ProfilePosParam PosPara;
+    for (int i=0; i<numNodes; i++)
+    {
+        res = pDev[i]->SetOperationMode(PROFILE_POS);
+        if (res == -1)
+        {
+            printf("Failed to set PosProfile Mode, device %d\n", pDev[i]->GetId());
+            return -1;
+        }
+
+        res = pDev[i]->GetPositionProfileParam(PosPara);
+        if (res == -1)
+        {
+            printf("Param Reading Error\n");
+            return -1;
+        }
+        else
+        {
+            printf("ProfilePos Params\n");
+            printf("MaxVel: %d,  QuickDecel: %d,  Acc: %d,  Decel: %d  Following Errr: %d  Vel: %d\n",
+                   PosPara.MaxProfileVelocity, PosPara.QuickStopDecel, PosPara.ProfileAccel, PosPara.ProfileDecel,
+                   PosPara.MaxFollowingError, PosPara.ProfileVelocity);
+        }
+
+        PosPara.ProfileAccel = PosPara.ProfileDecel = 10000;
+        PosPara.MaxProfileVelocity = 5000;
+
+        res = pDev[i]->SetPositionProfileParam(PosPara);
+        if (res == -1)
+        {
+            printf("Param Setting Error\n");
+            return -1;
+        }
+
+        printf("Control : 0x%04X, Status : 0x%04X\n", pDev[i]->ReadControlWord(), pDev[i]->ReadStatusWord());
+        printf("Current Position : %d\n", pDev[i]->ReadPosition());
+    }
+
+    sleep(2);
+
+    // CKim - Move to one position
+//    struct timespec start, end;         double elapsedTime;     int pos;
+
+//    // CKim - Measure time when sending target position by SDO
+//    pos = 500000;
+//    clock_gettime(CLOCK_REALTIME,&start);
+//    res = pDev[0]->MovePosProfile(pos, true);
+//    //res = pDev[0]->MovePosProfile(pos, false);
+//    //res = pDev[0]->MovePosProfileUsingPDO(pos, true);
+//    if(res == -1)
+//    {
+//        printf("MovePosProfile Error\n");
+//        cout << pDev[0]->GetErrorMsg() << endl;
+//    }
+//    clock_gettime(CLOCK_REALTIME,&end);
+//    elapsedTime = (end.tv_sec - start.tv_sec);
+//    elapsedTime = elapsedTime + (end.tv_nsec - start.tv_nsec)*1e-9;
+//    cout<< "Time taken is : " << fixed << elapsedTime << endl;
+
+//    sleep(5);
+
+//    //printf("Control : 0x%04X, Status : 0x%04X\n", pDev[0]->ReadControlWord(), pDev[0]->ReadStatusWord());
+
+//    //pDev[0]->HaltAxis();
+
+//    // CKim - Measure time when sending target position by PDO
+//    pos = -500000;
+//    clock_gettime(CLOCK_REALTIME,&start);
+//    res = pDev[0]->MovePosProfile(pos, true);
+//    //res = pDev[0]->MovePosProfile(pos, false);
+//    //res = pDev[0]->MovePosProfileUsingPDO(pos, true);
+//    clock_gettime(CLOCK_REALTIME,&end);
+//    elapsedTime = (end.tv_sec - start.tv_sec);
+//    elapsedTime = elapsedTime + (end.tv_nsec - start.tv_nsec)*1e-9;
+//    cout<< "Time taken is : " << fixed << elapsedTime << endl;
+
+//    sleep(5);
+
+//    if (res == -1)
+//    {
+//        printf("MovePosProfile error\n");
+//        return 0;
+//    }
+
+//    sleep(10);
+
+}
+
 int TestProfileVelocity()
 {
     // ------------------------------------------------
@@ -26,7 +118,7 @@ int TestProfileVelocity()
         if (res == -1)
         {
             printf("Param Reading Error\n");
-            return 0;
+            return -1;
         }
         else
         {
@@ -41,38 +133,49 @@ int TestProfileVelocity()
         if (res == -1)
         {
             printf("Param Setting Error\n");
-            return 0;
+            return -1;
         }
     }
 
-    res = pDev[0]->MoveVelProfile(5000);
-    if (res == -1)
+    // CKim - Move one direction
+    printf("Moving Forward\n");
+    for(int i=0; i<numNodes; i++)
     {
-        printf("MoveVelProfile error\n");
-        return 0;
+        res = pDev[i]->MoveVelProfile(5000);
+        if (res == -1)
+        {
+            printf("MoveVelProfile error\n");
+            return -1;
+        }
     }
-
     sleep(10);
 
-    res = pDev[0]->MoveVelProfile(-5000);
-    if (res == -1)
+    // CKim - Move the other direction
+    printf("Moving Backward\n");
+    for(int i=0; i<numNodes; i++)
     {
-        printf("MoveVelProfile error\n");
-        return 0;
+        res = pDev[i]->MoveVelProfile(-5000);
+        if (res == -1)
+        {
+            printf("MoveVelProfile error\n");
+            return -1;
+        }
     }
-
     sleep(10);
 
-    res = pDev[0]->HaltAxis();
-    if (res == -1)
+    // CKim - Stop
+    printf("Stopping\n");
+    for(int i=0; i<numNodes; i++)
     {
-        printf("MoveVelProfile error\n");
-        return 0;
+        res = pDev[i]->HaltAxis();
+        if (res == -1)
+        {
+            printf("MoveVelProfile error\n");
+            return -1;
+        }
     }
-
     sleep(5);
-    // -----------------------------------------
-
+    return 0;
 }
 
 int TestHoming()
@@ -116,100 +219,6 @@ int TestHoming()
     //	}
     //	Sleep(2000);
     //	// --------------------------------------------------------
-
-}
-
-int TestProfilePosition()
-{
-    // ---------------------------------------------------------------
-    // CKim - Enable Position Control Mode
-    ProfilePosParam PosPara;
-    for (int i=0; i<numNodes; i++)
-    {
-        res = pDev[i]->SetOperationMode(PROFILE_POS);
-        if (res == -1)
-        {
-            printf("Failed to set PosProfile Mode, device %d\n", pDev[i]->GetId());
-            cout << pDev[i]->GetErrorMsg() << endl;
-            return 0;
-        }
-
-        res = pDev[i]->GetPositionProfileParam(PosPara);
-        if (res == -1)
-        {
-            printf("Param Reading Error\n");
-            cout << pDev[i]->GetErrorMsg() << endl;
-            return 0;
-        }
-        else
-        {
-            printf("ProfilePos Params\n");
-            printf("MaxVel: %d,  QuickDecel: %d,  Acc: %d,  Decel: %d  Following Errr: %d  Vel: %d\n",
-                   PosPara.MaxProfileVelocity, PosPara.QuickStopDecel, PosPara.ProfileAccel, PosPara.ProfileDecel,
-                   PosPara.MaxFollowingError, PosPara.ProfileVelocity);
-        }
-
-        PosPara.ProfileAccel = PosPara.ProfileDecel = 10000;
-        PosPara.MaxProfileVelocity = 50000;
-
-        res = pDev[i]->SetPositionProfileParam(PosPara);
-        if (res == -1)
-        {
-            printf("Param Setting Error\n");
-            cout << pDev[i]->GetErrorMsg() << endl;
-            return 0;
-        }
-    }
-
-//    sleep(2);
-
-    //printf("Control : 0x%04X, Status : 0x%04X\n", pDev[0]->ReadControlWord(), pDev[0]->ReadStatusWord());
-    //printf("Current Position : %d\n", pDev[0]->ReadPosition());
-
-    struct timespec start, end;         double elapsedTime;     int pos;
-
-    // CKim - Measure time when sending target position by SDO
-    pos = 500000;
-    clock_gettime(CLOCK_REALTIME,&start);
-    res = pDev[0]->MovePosProfile(pos, true);
-    //res = pDev[0]->MovePosProfile(pos, false);
-    //res = pDev[0]->MovePosProfileUsingPDO(pos, true);
-    if(res == -1)
-    {
-        printf("MovePosProfile Error\n");
-        cout << pDev[0]->GetErrorMsg() << endl;
-    }
-    clock_gettime(CLOCK_REALTIME,&end);
-    elapsedTime = (end.tv_sec - start.tv_sec);
-    elapsedTime = elapsedTime + (end.tv_nsec - start.tv_nsec)*1e-9;
-    cout<< "Time taken is : " << fixed << elapsedTime << endl;
-
-    sleep(5);
-
-    //printf("Control : 0x%04X, Status : 0x%04X\n", pDev[0]->ReadControlWord(), pDev[0]->ReadStatusWord());
-
-    //pDev[0]->HaltAxis();
-
-    // CKim - Measure time when sending target position by PDO
-    pos = -500000;
-    clock_gettime(CLOCK_REALTIME,&start);
-    res = pDev[0]->MovePosProfile(pos, true);
-    //res = pDev[0]->MovePosProfile(pos, false);
-    //res = pDev[0]->MovePosProfileUsingPDO(pos, true);
-    clock_gettime(CLOCK_REALTIME,&end);
-    elapsedTime = (end.tv_sec - start.tv_sec);
-    elapsedTime = elapsedTime + (end.tv_nsec - start.tv_nsec)*1e-9;
-    cout<< "Time taken is : " << fixed << elapsedTime << endl;
-
-    sleep(5);
-
-    if (res == -1)
-    {
-        printf("MovePosProfile error\n");
-        return 0;
-    }
-
-    sleep(10);
 
 }
 
@@ -349,12 +358,11 @@ int TestSyncPos()
 
 int main()
 {
-
     // CKim - Open CAN port
     res = EposCAN::ConnectCANport("can0");
-    if (res == 0)	{
+    if (res != 0)	{
         printf("Failed to open CAN port\n");
-        return 0;
+        return -1;
     }
     printf("Opened CAN Port\n");
 
@@ -362,33 +370,36 @@ int main()
 
     // CKim - Wake up the devices
     res = EposCAN::SendSYNC();
-    if (res == -1)	{
+    if (res != 0)	{
         printf("Failed to send SYNC\n");
-        return 0;
+        return -1;
     }
 
     // CKim - Create EPOS object. Index is base 1.
     for (int i=0; i<numNodes; i++)
     {
         pDev[i] = new EposCAN(i + 1);
-
     }
 
     // CKim - Switch On and Enable Device
     for (int i=0; i<numNodes; i++)
     {
         res = pDev[i]->EnableDevice();
-        if (res == -1)
+        if (res != 0)
         {
             printf("Failed to Enable Device %d\n", pDev[i]->GetId());
             cout << pDev[i]->GetErrorMsg() << endl;
-            return 0;
+            return -1;
         }
         else {
             printf("Enabled device %d\n",pDev[i]->GetId());
         }
         usleep(1000);
     }
+
+    std::cout << "Press number to continue : ";
+    int a;
+    std::cin >> a;
 
 //    // -----------------------------------------------
 //    // CKim - Configure TxPDO1 and RxPDO1
@@ -411,25 +422,23 @@ int main()
 
     //sleep(2);
 
+    TestProfilePosition();
     //TestProfileVelocity();
+
     //TestHoming();
-    //TestProfilePosition();
     //TestOscillatingMotion();
     //TestSyncPos();
 
-    std::cout << "Press number to continue ";
-    int a;
-    std::cin >> a;
 
 
     // CKim - Disable Device
     for (int i = 0; i < numNodes; i++)
     {
         res = pDev[i]->DisableDevice();
-        if (res == -1)
+        if (res != 0)
         {
             printf("Failed to Disable Device %d\n", pDev[i]->GetId());
-            return 0;
+            return -1;
         }
         else {
             printf("Disabled device %d\n",pDev[i]->GetId());

@@ -62,8 +62,7 @@ public:
     /**
      * @brief Opens CAN port and configures communication.
      * @param portName Port name ex) "CAN0"
-     * @note node id and baudrate is hard coded for now.
-     * @return 1 on sucess, otherwise 0
+     * @return 0 on sucess, otherwise -1
      */
     int OpenCANport(const char* portName);
 
@@ -98,6 +97,7 @@ public:
      * Client (master) sends SDO to server (slave) to
      * 1. rw == SDO_WRITE to write data to the Object Dictionary of the EPOS (slave)
      * 2. rw == SDO_READ to read from the Object Dictionary of the EPOS (slave)
+     * @return 0 on sucess, otherwise -1
      */
     int SendSDO(SDO_data* data, int rw);
 

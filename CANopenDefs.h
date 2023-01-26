@@ -21,6 +21,8 @@
 #define NMT_PREOPERATIONAL  0x80
 #define NMT_OPERATIONAL     0x01
 
+#define COBID_SYNC 0x00000080
+
 // CKim - Command Object ID (COB-ID) of the SDO (Service Data Object) TX (from EPOS to PC) RX (from PC to EPOS)
 enum SDO_ID {
     SDO_TX = 0x580, /* +node id */

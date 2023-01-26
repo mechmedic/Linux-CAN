@@ -227,8 +227,8 @@ public:
 private:
 
 	// CKim - Write / Read SDO_data : Blocks until reply is received. return  0 on success, -1 on error, -2 on timeout
-    int SDO_write(SDO_data* d);
-	int SDO_read(SDO_data* d);
+    int SDO_write(SDO_data* d)  {   return m_CANport.SendSDO(d,SDO_WRITE);    };
+    int SDO_read(SDO_data* d)   {   return m_CANport.SendSDO(d,SDO_READ);    };
 
 
 
