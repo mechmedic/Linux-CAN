@@ -6,11 +6,17 @@
 
 // CKim - Static Variable initialization
 //EposCAN* EposCAN::m_pDev[10] = { 0 };
+canInterface EposCAN::m_CANport;
 
 EposCAN::EposCAN(int n)
 {
     m_nodeId = n;
-    m_CANport.RegisterDevice(n-1, this);
+
+
+    //    // ---------------------------------------------------------------
+    //    // CKim - Launch CAN Read Thread
+    //    pthread_create(&m_hReadThrd, NULL, LinuxSocketCAN::CAN_ReadThread, 0);
+    //    // ---------------------------------------------------------------
 }
 
 EposCAN::~EposCAN()

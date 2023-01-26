@@ -1,19 +1,41 @@
-// ------------------------------------------------------------------------------
-// CKim - 2019.Sep.16 : C++ class for communicating with Maxon EPOS4 controller
-// over CAN network. Change the defines to switch from one CAN interface to
-// another. Currently available CAN interfaces (CAN device + driver) are
-// 1. pi2can on raspberry pi (or other linux) + SocketCAN driver
-//    pi2can :  http://skpang.co.uk/dl/cantest.tar
-// 2. NTRexLab's USB2CAN and its driver (only available in Windows)
-//    USB2CAN : http://www.devicemart.co.kr/goods/view?no=1323536#goods_review)
-// ------------------------------------------------------------------------------
+/**
+ ***************************************************************************
+ * \file  EposCAN.h
+ * \brief Header file of C++ class for communicating with Maxon EPOS2/4
+ * controller over CAN network. Builds SDO/PDO objects for motion control
+ * commands and sends it over CAN using underlying CAN interface.
+ * Change the defines to switch from one CAN interface to another.
+ * Currently available CAN interfaces (CAN device + driver) are
+ * 1. pi2can on raspberry pi (or other linux) + SocketCAN driver
+ *     pi2can :  http://skpang.co.uk/dl/cantest.tar
+ * 2. NTRexLab's USB2CAN and its driver (only available in Windows)
+ *    USB2CAN : http://www.devicemart.co.kr/goods/view?no=1323536#goods_review)
+ *
+ * Last Updated : 2023.01.26 Chunwoo Kim (CKim)
+ * Contact Info : cwkim@kist.re.kr
+ ***************************************************************************
+**/
 
 #ifndef EPOSCAN_H
 #define EPOSCAN_H
 
-// CKim - Change header here to switch between CAN configuration
-#include "linuxsocketcan.h"
-//#include "windowsusb2can.h"
+// CKim - Change definition to 1 for the CAN interface to be used.
+#define USE_SOCKET_CAN  1
+#define USE_USB_CAN     0
+
+#if USE_SOCKET_CAN
+    #include "linuxsocketcan.h"
+    typedef LinuxSocketCAN canInterface;
+#elif USE_USB_CAN
+    #include "windowsusb2can.h"
+    typedef WindowsUSBCAN canInterface;
+#endif
+
+// CKim - In linux, instead of Event, I'm using semaphore. So include following headers.
+#include <pthread.h>
+#include <semaphore.h>
+#include <time.h>
+#include <thread>
 
 // CKim - This is EPOS2 Operation mode
 enum OP_MODE {
@@ -80,8 +102,7 @@ public:
 
 private:
     // CKim - Class encapsulating CAN interface. Switch between different CAN hardware setups
-    LinuxSocketCAN  m_CANport;
-    //WindowsUSB2CAN m_CANport;
+    static canInterface m_CANport;
 
     // CKim - ID of the EPOS controller in CAN
     int			m_nodeId;
@@ -103,17 +124,17 @@ public:
 	
     int GetId()                 {	return m_nodeId;            }
     int GetMode()               {	return m_mode;              }
-    std::string GetErrorMsg()   {   return m_CANport.m_errMsg;  }
+    std::string GetErrorMsg()   { return "";}//{   return m_CANport.m_errMsg;  }
 
     // -------------------------------------------
 	// CKim - Open CAN port
-    static int OpenCANport(const char* portName)    {   return(LinuxSocketCAN::OpenCANport(portName));  }
+    static int ConnectCANport(const char* portName)    {   return(m_CANport.OpenCANport(portName));  }
 
     // CKim - Close CAN port
-    static int CloseCANport()   {   return(LinuxSocketCAN::CloseCANport());     }
+    static int DisconnectCANport()   {   return(m_CANport.CloseCANport());     }
 
     // CKim - Send SYNC over entire network
-    static int SendSYNC()       {   return(LinuxSocketCAN::SendSYNC());         }
+    static int SendSYNC()       {   return(m_CANport.SendSYNC());         }
 
     // CKim - Enable the device
     int EnableDevice();
@@ -208,6 +229,12 @@ private:
 	// CKim - Write / Read SDO_data : Blocks until reply is received. return  0 on success, -1 on error, -2 on timeout
     int SDO_write(SDO_data* d);
 	int SDO_read(SDO_data* d);
+
+
+
+    // CKim - PDO Cycling functions will be needed.    // CKim - Function that runs in separate thread and continuously read incoming CAN packets
+    //    static void* CAN_ReadThread(void* pData);
+
 
 };
 

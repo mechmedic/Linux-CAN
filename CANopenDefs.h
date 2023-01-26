@@ -1,9 +1,13 @@
-// ------------------------------------------------------------------------------
-// CKim - 2019. Sep.16 : Common defines for the C++ class encapsulating CAN
-// interface for various OS + CAN port devices
-// 1. Linux + SocketCAN : https://en.wikipedia.org/wiki/SocketCAN
-// 2. Windows + USB2CAN : http://www.devicemart.co.kr/goods/view?no=1323536
-// ------------------------------------------------------------------------------
+/**
+ ***************************************************************************
+ * \file  CANopenDefs.h
+ * \brief Common header files defining CANopen related data structures
+ * and functions
+ *
+ * Last Updated : 2023.01.26 Chunwoo Kim (CKim)
+ * Contact Info : cwkim@kist.re.kr
+ ***************************************************************************
+**/
 
 #include <stdint.h>
 

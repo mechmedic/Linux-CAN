@@ -3,16 +3,15 @@
 #include <sys/time.h>
 #include <math.h>
 
-
-
-
 #include "EposCAN.h"
 
 using namespace std;
 
-int numNodes = 1;
 int res;
+int numNodes = 1;
 EposCAN* pDev[1];
+
+
 sem_t sema;
 
 int TestProfileVelocity()
@@ -348,13 +347,13 @@ int TestSyncPos()
     sleep(1);
 }
 
-
 int main()
 {
+
     // CKim - Open CAN port
-    res = EposCAN::OpenCANport("can0");
-    if (res == -1)	{
-        printf("Failed to open USB_CAN\n");
+    res = EposCAN::ConnectCANport("can0");
+    if (res == 0)	{
+        printf("Failed to open CAN port\n");
         return 0;
     }
     printf("Opened CAN Port\n");
@@ -368,7 +367,7 @@ int main()
         return 0;
     }
 
-    // CKim - Create 3 EPOS object. Index is base 1.
+    // CKim - Create EPOS object. Index is base 1.
     for (int i=0; i<numNodes; i++)
     {
         pDev[i] = new EposCAN(i + 1);
@@ -391,37 +390,40 @@ int main()
         usleep(1000);
     }
 
-    // -----------------------------------------------
-    // CKim - Configure TxPDO1 and RxPDO1
-    for (int i=0; i<numNodes; i++)
-    {
-        res = pDev[i]->DisablePDO();        if (res == -1)	{  break;    }
-        res = pDev[i]->ConfigureTxPDO();    if (res == -1)	{  break;    }
-        res = pDev[i]->ConfigureRxPDO();    if (res == -1)	{  break;    }
-        //res = pDev[i]->SetTxPDOMapping(1);		if (res == -1)	{ break; }
-        //res = pDev[i]->SetRxPDOMapping(1);		if (res == -1)	{ break; }
-        res = pDev[i]->EnablePDO();         if (res == -1)	{  break;    }
-    }
-    if (res == -1)
-    {
-        printf("Error while configuring PDO\n");
-        cout << pDev[0]->GetErrorMsg() << endl;
-        return 0;
-    }
-    // -----------------------------------------------
+//    // -----------------------------------------------
+//    // CKim - Configure TxPDO1 and RxPDO1
+//    for (int i=0; i<numNodes; i++)
+//    {
+//        res = pDev[i]->DisablePDO();        if (res == -1)	{  break;    }
+//        res = pDev[i]->ConfigureTxPDO();    if (res == -1)	{  break;    }
+//        res = pDev[i]->ConfigureRxPDO();    if (res == -1)	{  break;    }
+//        //res = pDev[i]->SetTxPDOMapping(1);		if (res == -1)	{ break; }
+//        //res = pDev[i]->SetRxPDOMapping(1);		if (res == -1)	{ break; }
+//        res = pDev[i]->EnablePDO();         if (res == -1)	{  break;    }
+//    }
+//    if (res == -1)
+//    {
+//        printf("Error while configuring PDO\n");
+//        cout << pDev[0]->GetErrorMsg() << endl;
+//        return 0;
+//    }
+//    // -----------------------------------------------
 
     //sleep(2);
 
     //TestProfileVelocity();
     //TestHoming();
-    TestProfilePosition();
+    //TestProfilePosition();
     //TestOscillatingMotion();
     //TestSyncPos();
 
+    std::cout << "Press number to continue ";
+    int a;
+    std::cin >> a;
 
 
     // CKim - Disable Device
-    for (int i = 0; i < 1; i++)
+    for (int i = 0; i < numNodes; i++)
     {
         res = pDev[i]->DisableDevice();
         if (res == -1)
@@ -435,7 +437,7 @@ int main()
         usleep(1000);
     }
 
-    pDev[0]->CloseCANport();
+    EposCAN::DisconnectCANport();
     return 0;
 
 }

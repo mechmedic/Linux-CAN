@@ -1,14 +1,27 @@
-// ------------------------------------------------------------------------------
-// CKim - 2019. Sep.16 : C++ class encapsulating CAN interface for Linux
-// that uses SocketCAN driver. Select this CAN interface class in EposCAN
-// class if you are using pi2can board + raspberry pi for your motor control.
-// SocketCAN is open source library for CAN communication that is part of linux kernel.
-// https://en.wikipedia.org/wiki/SocketCAN
-// https://www.kernel.org/doc/Documentation/networking/can.txt
-//
-// This code is based on the example code provided by pi2can
-// http://skpang.co.uk/dl/cantest.tar
-// ------------------------------------------------------------------------------
+/**
+ ***************************************************************************
+ * \file  linuxsocketcan.h
+ * \brief Header file of C++ class encapsulating CAN interface
+ * for Linux that uses SocketCAN driver. SocketCAN is open source library for
+ * CAN communication that is part of linux kernel.
+ * Select this CAN interface class in EposCAN class if you are using
+ * pi2can board + raspberry pi for your motor control.
+ *
+ * This code is based on the example code from
+ * http://skpang.co.uk/dl/cantest.tar
+ * https://github.com/linux-can/can-utils
+ *
+ * For more information on SocketCAN, see
+ * https://en.wikipedia.org/wiki/SocketCAN
+ * https://www.kernel.org/doc/Documentation/networking/can.txt
+
+ * Last Updated : 2023.01.26 Chunwoo Kim (CKim)
+ * Contact Info : cwkim@kist.re.kr
+ ***************************************************************************
+**/
+
+
+
 
 #ifndef LINUXSOCKETCAN_H
 #define LINUXSOCKETCAN_H
@@ -22,70 +35,88 @@
 #include <net/if.h>
 #include <sys/ioctl.h>
 
-// CKim - In linux, instead of Event, I'm using semaphore. So include following headers.
-#include <pthread.h>
-#include <semaphore.h>
-#include <time.h>
-
 // CKim - C++ string
 #include <string>
 
-// CKim - Common header file for CAN class
+// CKim - Common header file for CANopen
 #include "CANopenDefs.h"
-
-
-// CKim - Forward declaration of the EPOS motor controller class. CAN interface needs to
-// have pointer of the slave devices (EPOS) registred in the network to pass received PDOs.
-class EposCAN;
-
 
 class LinuxSocketCAN
 {
 
-public:
-    std::string         m_errMsg;
-    static std::string  m_portName;
-
 private:
-    static int          m_hd;           // CKim - Socket Handle. -1 if not initialized. For pi2can
-    static sem_t        m_hSDO_Sema;    // CKim - Semaphore for signaling SDO receive
-    static pthread_t    m_hReadThrd;    // CKim - Thread receiving incoming CAN data
 
-    static SDO_data		m_RcvSDOdata;   // CKim - Received SDO data
-    static EposCAN*     m_pDev[10];     // CKim - Stores pointers to device registered to this CAN
+    /// std::string for error messages. Accessed by GetError() function
+    std::string         m_errMsg;
+
+    /// Name of CAN port
+    std::string  m_portName;
+
+    /// Socket Handle. -1 if not initialized. For pi2can
+    static int m_hd;
 
 public:
     LinuxSocketCAN();
     ~LinuxSocketCAN();
 
-    // CKim - Open/Close CAN port. return -1 on error
-    static int OpenCANport(const char* portName);
-    static int CloseCANport();
+    /**
+     * @brief Opens CAN port and configures communication.
+     * @param portName Port name ex) "CAN0"
+     * @note node id and baudrate is hard coded for now.
+     * @return 1 on sucess, otherwise 0
+     */
+    int OpenCANport(const char* portName);
 
-    // CKim - Send SYNC object to all the devices in network. This is used for
-    // synchronizing PDO transport of all the connected devices.
-    static int SendSYNC();
+    /**
+     * @brief Closes CAN port
+     * @return -1 on error, otherwise 0.
+     */
+    int CloseCANport();
 
-    // CKim - Register EPOS slave to this CAN network
-    void RegisterDevice(int n, EposCAN* ptr)    {    m_pDev[n] = ptr;   }
+    /**
+     * @brief Send SYNC object to all the devices in network.
+     * This is used for synchronizing PDO transport of all the connected devices.C
+     */
+    int SendSYNC();
 
-    // CKim - Write / Read SDO_data : Blocks until reply is received. return  0 on success, -1 on error, -2 on timeout
-    int SendSDO(SDO_data* d, int rw);
-
-    // CKim - Enable / Disable PDO. This is done by using Network Management (NMT) services.
-    // PC is the NMT Master and EPOS is NMT Slave. Slave needs to switch from 'Pre-operational'
-    // to 'Operational' state to send/receive PDO. Switch between the states is done by
-    // sending NMT messages, which has Communication Object ID 0 + 1 byte state command
-    // Set nodeId to 0 to put enanle/disable all nodes
+    /**
+     * @brief Send Network Management (NMT) message.
+     * PC is the NMT Master and EPOS is NMT Slave. Slave needs to switch from 'Pre-operational'
+     * to 'Operational' state to send/receive PDO. Switch between the states is done by
+     * sending NMT messages, which has Communication Object ID 0 + 1 byte state command
+     * This function is called to Enable / Disable PDO.
+     * @param nodeId 0 to change state of all nodes
+     */
     int SendNMT(int state, int nodeId);
 
-    // CKim - Send RxPDO Object
+    /**
+     * @brief  Write / Read SDO_data : Blocks until reply is received. return  0 on success, -1 on error, -2 on timeout
+     * @param data Data to send, also stores received SDO data
+     *
+     * Write / Read SDO_data : Blocks until reply is received. return  0 on success, -1 on error, -2 on timeout
+     * CAN Master PC is Client and the connected slave devices (EPOS Controller) are Server.
+     * Client (master) sends SDO to server (slave) to
+     * 1. rw == SDO_WRITE to write data to the Object Dictionary of the EPOS (slave)
+     * 2. rw == SDO_READ to read from the Object Dictionary of the EPOS (slave)
+     */
+    int SendSDO(SDO_data* data, int rw);
+
+    /**
+     * @brief  Send RxPDO Object
+     */
     int SendRxPDO(int COBID, int sz, char* buff);
 
+    /**
+     * @brief  Get Error message
+     */
+    void GetError(std::string& msg) {   msg = m_errMsg; }
 
 private:
-    // CKim - Function that runs in separate thread and continuously read incoming CAN packets
-    static void* CAN_ReadThread(void* pData);
+    /**
+     * @brief  Parse CAN Frame into SDO_data
+     */
+    int FrameToSdo(const struct can_frame& frame, SDO_data* sdo);
+
 };
 
 #endif // LINUXSOCKETCAN_H
