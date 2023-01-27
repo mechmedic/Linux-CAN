@@ -8,8 +8,8 @@
 using namespace std;
 
 int res;
-int numNodes = 1;
-EposCAN* pDev[1];
+int numNodes = NUM_NODE;
+EposCAN* pDev;
 
 
 sem_t sema;
@@ -19,16 +19,16 @@ int TestProfilePosition()
     // ---------------------------------------------------------------
     // CKim - Enable Position Control Mode
     ProfilePosParam PosPara;
-    for (int i=0; i<numNodes; i++)
+    for (int i=1; i<(1+numNodes); i++)
     {
-        res = pDev[i]->SetOperationMode(PROFILE_POS);
+        res = pDev->SetOperationMode(i, PROFILE_POS);
         if (res == -1)
         {
-            printf("Failed to set PosProfile Mode, device %d\n", pDev[i]->GetId());
+            printf("Failed to set PosProfile Mode, device %d\n", pDev->GetId());
             return -1;
         }
 
-        res = pDev[i]->GetPositionProfileParam(PosPara);
+        res = pDev->GetPositionProfileParam(i, PosPara);
         if (res == -1)
         {
             printf("Param Reading Error\n");
@@ -36,7 +36,7 @@ int TestProfilePosition()
         }
         else
         {
-            printf("ProfilePos Params\n");
+            printf("Node %d ProfilePos Params\n",i);
             printf("MaxVel: %d,  QuickDecel: %d,  Acc: %d,  Decel: %d  Following Errr: %d  Vel: %d\n",
                    PosPara.MaxProfileVelocity, PosPara.QuickStopDecel, PosPara.ProfileAccel, PosPara.ProfileDecel,
                    PosPara.MaxFollowingError, PosPara.ProfileVelocity);
@@ -45,65 +45,57 @@ int TestProfilePosition()
         PosPara.ProfileAccel = PosPara.ProfileDecel = 10000;
         PosPara.MaxProfileVelocity = 5000;
 
-        res = pDev[i]->SetPositionProfileParam(PosPara);
+        res = pDev->SetPositionProfileParam(i,PosPara);
         if (res == -1)
         {
             printf("Param Setting Error\n");
             return -1;
         }
 
-        printf("Control : 0x%04X, Status : 0x%04X\n", pDev[i]->ReadControlWord(), pDev[i]->ReadStatusWord());
-        printf("Current Position : %d\n", pDev[i]->ReadPosition());
+        printf("Control : 0x%04X, Status : 0x%04X\n", pDev->ReadControlWord(i), pDev->ReadStatusWord(i));
+        printf("Current Position : %d\n", pDev->ReadPosition(i));
     }
 
     sleep(2);
+    printf("Starting Motion\n");
 
     // CKim - Move to one position
-//    struct timespec start, end;         double elapsedTime;     int pos;
+    struct timespec start, end;         double elapsedTime;     int pos;
 
-//    // CKim - Measure time when sending target position by SDO
-//    pos = 500000;
-//    clock_gettime(CLOCK_REALTIME,&start);
-//    res = pDev[0]->MovePosProfile(pos, true);
-//    //res = pDev[0]->MovePosProfile(pos, false);
-//    //res = pDev[0]->MovePosProfileUsingPDO(pos, true);
-//    if(res == -1)
-//    {
-//        printf("MovePosProfile Error\n");
-//        cout << pDev[0]->GetErrorMsg() << endl;
-//    }
-//    clock_gettime(CLOCK_REALTIME,&end);
-//    elapsedTime = (end.tv_sec - start.tv_sec);
-//    elapsedTime = elapsedTime + (end.tv_nsec - start.tv_nsec)*1e-9;
-//    cout<< "Time taken is : " << fixed << elapsedTime << endl;
+    // CKim - Measure time when sending target position by SDO
+    pos = 500000;
+    clock_gettime(CLOCK_REALTIME,&start);
+    for (int i=1; i<(1+numNodes); i++)
+    {
+        res = pDev->MovePosProfile(i, pos, true);
+        //res = pDev[0]->MovePosProfile(pos, false);
+        //res = pDev[0]->MovePosProfileUsingPDO(pos, true);
+        if(res == -1)
+        {
+            printf("MovePosProfile Error\n");
+        }
+    }
+    //res = pDev->WaitForMotionCompletion(1,5000);
+    //res = pDev->WaitForMotionCompletion(1,500);
+    res = pDev->WaitForMotionCompletionAll(500);
+    if(res!=0) {
+        res = pDev->HaltAxis(1);
+    }
 
-//    sleep(5);
+    clock_gettime(CLOCK_REALTIME,&end);
+    elapsedTime = (end.tv_sec - start.tv_sec);
+    elapsedTime = elapsedTime + (end.tv_nsec - start.tv_nsec)*1e-9;
+    cout<< "Time taken is : " << fixed << elapsedTime << endl;
 
-//    //printf("Control : 0x%04X, Status : 0x%04X\n", pDev[0]->ReadControlWord(), pDev[0]->ReadStatusWord());
+    //sleep(5);
 
-//    //pDev[0]->HaltAxis();
+    for (int i=1; i<(1+numNodes); i++)
+    {
+        printf("Control : 0x%04X, Status : 0x%04X\n", pDev->ReadControlWord(i), pDev->ReadStatusWord(i));
+        printf("Current Position : %d\n", pDev->ReadPosition(i));
+    }
 
-//    // CKim - Measure time when sending target position by PDO
-//    pos = -500000;
-//    clock_gettime(CLOCK_REALTIME,&start);
-//    res = pDev[0]->MovePosProfile(pos, true);
-//    //res = pDev[0]->MovePosProfile(pos, false);
-//    //res = pDev[0]->MovePosProfileUsingPDO(pos, true);
-//    clock_gettime(CLOCK_REALTIME,&end);
-//    elapsedTime = (end.tv_sec - start.tv_sec);
-//    elapsedTime = elapsedTime + (end.tv_nsec - start.tv_nsec)*1e-9;
-//    cout<< "Time taken is : " << fixed << elapsedTime << endl;
-
-//    sleep(5);
-
-//    if (res == -1)
-//    {
-//        printf("MovePosProfile error\n");
-//        return 0;
-//    }
-
-//    sleep(10);
-
+    return 0;
 }
 
 int TestProfileVelocity()
@@ -111,10 +103,10 @@ int TestProfileVelocity()
     // ------------------------------------------------
     // CKim - Setup Profile Velocity Control Mode
     ProfileVelParam VelPara;
-    for(int i=0; i<numNodes; i++)
+    for(int i=1; i<(1+numNodes); i++)
     {
-        res = pDev[i]->SetOperationMode(PROFILE_VEL);
-        res = pDev[i]->GetVelocityProfileParam(VelPara);
+        res = pDev->SetOperationMode(i, PROFILE_VEL);
+        res = pDev->GetVelocityProfileParam(i, VelPara);
         if (res == -1)
         {
             printf("Param Reading Error\n");
@@ -129,7 +121,7 @@ int TestProfileVelocity()
 
         VelPara.ProfileAccel = VelPara.ProfileDecel = 5000;
 
-        res = pDev[i]->SetVelocityProfileParam(VelPara);
+        res = pDev->SetVelocityProfileParam(i, VelPara);
         if (res == -1)
         {
             printf("Param Setting Error\n");
@@ -139,9 +131,9 @@ int TestProfileVelocity()
 
     // CKim - Move one direction
     printf("Moving Forward\n");
-    for(int i=0; i<numNodes; i++)
+    for(int i=1; i<(1+numNodes); i++)
     {
-        res = pDev[i]->MoveVelProfile(5000);
+        res = pDev->MoveVelProfile(i, 5000);
         if (res == -1)
         {
             printf("MoveVelProfile error\n");
@@ -152,9 +144,9 @@ int TestProfileVelocity()
 
     // CKim - Move the other direction
     printf("Moving Backward\n");
-    for(int i=0; i<numNodes; i++)
+    for(int i=1; i<(1+numNodes); i++)
     {
-        res = pDev[i]->MoveVelProfile(-5000);
+        res = pDev->MoveVelProfile(i, -5000);
         if (res == -1)
         {
             printf("MoveVelProfile error\n");
@@ -165,9 +157,9 @@ int TestProfileVelocity()
 
     // CKim - Stop
     printf("Stopping\n");
-    for(int i=0; i<numNodes; i++)
+    for(int i=1; i<(1+numNodes); i++)
     {
-        res = pDev[i]->HaltAxis();
+        res = pDev->HaltAxis(i);
         if (res == -1)
         {
             printf("MoveVelProfile error\n");
@@ -224,136 +216,137 @@ int TestHoming()
 
 int TestOscillatingMotion()
 {
-    // ---------------------------------------------------------------
-    // CKim - Enable Position Control Mode
-    ProfilePosParam PosPara;
-    for (int i=0; i<numNodes; i++)
-    {
-        res = pDev[i]->SetOperationMode(PROFILE_POS);
-        if (res == -1)
-        {
-            printf("Failed to set PosProfile Mode, device %d\n", pDev[i]->GetId());
-            cout << pDev[i]->GetErrorMsg() << endl;
-            return 0;
-        }
+//    // ---------------------------------------------------------------
+//    // CKim - Enable Position Control Mode
+//    ProfilePosParam PosPara;
+//    for (int i=0; i<numNodes; i++)
+//    {
+//        res = pDev[i]->SetOperationMode(PROFILE_POS);
+//        if (res == -1)
+//        {
+//            printf("Failed to set PosProfile Mode, device %d\n", pDev[i]->GetId());
+//            cout << pDev[i]->GetErrorMsg() << endl;
+//            return 0;
+//        }
 
-        res = pDev[i]->GetPositionProfileParam(PosPara);
-        if (res == -1)
-        {
-            printf("Param Reading Error\n");
-            cout << pDev[i]->GetErrorMsg() << endl;
-            return 0;
-        }
-        else
-        {
-            printf("ProfilePos Params\n");
-            printf("MaxVel: %d,  QuickDecel: %d,  Acc: %d,  Decel: %d  Following Errr: %d  Vel: %d\n",
-                   PosPara.MaxProfileVelocity, PosPara.QuickStopDecel, PosPara.ProfileAccel, PosPara.ProfileDecel,
-                   PosPara.MaxFollowingError, PosPara.ProfileVelocity);
-        }
+//        res = pDev[i]->GetPositionProfileParam(PosPara);
+//        if (res == -1)
+//        {
+//            printf("Param Reading Error\n");
+//            cout << pDev[i]->GetErrorMsg() << endl;
+//            return 0;
+//        }
+//        else
+//        {
+//            printf("ProfilePos Params\n");
+//            printf("MaxVel: %d,  QuickDecel: %d,  Acc: %d,  Decel: %d  Following Errr: %d  Vel: %d\n",
+//                   PosPara.MaxProfileVelocity, PosPara.QuickStopDecel, PosPara.ProfileAccel, PosPara.ProfileDecel,
+//                   PosPara.MaxFollowingError, PosPara.ProfileVelocity);
+//        }
 
-        PosPara.ProfileAccel = PosPara.ProfileDecel = 10000;
-        PosPara.MaxProfileVelocity = 50000;
-        PosPara.ProfileVelocity = 50000;
+//        PosPara.ProfileAccel = PosPara.ProfileDecel = 10000;
+//        PosPara.MaxProfileVelocity = 50000;
+//        PosPara.ProfileVelocity = 50000;
 
-        res = pDev[i]->SetPositionProfileParam(PosPara);
-        if (res == -1)
-        {
-            printf("Param Setting Error\n");
-            cout << pDev[i]->GetErrorMsg() << endl;
-            return 0;
-        }
-    }
+//        res = pDev[i]->SetPositionProfileParam(PosPara);
+//        if (res == -1)
+//        {
+//            printf("Param Setting Error\n");
+//            cout << pDev[i]->GetErrorMsg() << endl;
+//            return 0;
+//        }
+//    }
 
 
-    printf("Starting Motion\n");
-    int pos;        int amp = 50000;
-    for(int i=0; i<10; i++)
-    {
-        pos = amp;
-        res = pDev[0]->MovePosProfile(pos, true);
-        //res = pDev[0]->MovePosProfileUsingPDO(pos, true);
-        if(res == -1)
-        {
-            printf("MovePosProfile Error\n");
-            cout << pDev[0]->GetErrorMsg() << endl;
-            break;
-        }
+//    printf("Starting Motion\n");
+//    int pos;        int amp = 50000;
+//    for(int i=0; i<10; i++)
+//    {
+//        pos = amp;
+//        res = pDev[0]->MovePosProfile(pos, true);
+//        //res = pDev[0]->MovePosProfileUsingPDO(pos, true);
+//        if(res == -1)
+//        {
+//            printf("MovePosProfile Error\n");
+//            cout << pDev[0]->GetErrorMsg() << endl;
+//            break;
+//        }
 
-        res = pDev[0]->WaitForMotionCompletion(5000);
-        if(res == -1)
-        {
-            printf("WaitForMotion Error\n");
-            break;
-        }
+//        res = pDev[0]->WaitForMotionCompletion(5000);
+//        if(res == -1)
+//        {
+//            printf("WaitForMotion Error\n");
+//            break;
+//        }
 
-        pos = -amp;
-        res = pDev[0]->MovePosProfile(pos, true);
-        //res = pDev[0]->MovePosProfileUsingPDO(pos, true);
-        if(res == -1)
-        {
-            printf("MovePosProfile Error\n");
-            cout << pDev[0]->GetErrorMsg() << endl;
-            break;
-        }
+//        pos = -amp;
+//        res = pDev[0]->MovePosProfile(pos, true);
+//        //res = pDev[0]->MovePosProfileUsingPDO(pos, true);
+//        if(res == -1)
+//        {
+//            printf("MovePosProfile Error\n");
+//            cout << pDev[0]->GetErrorMsg() << endl;
+//            break;
+//        }
 
-        res = pDev[0]->WaitForMotionCompletion(5000);
-        if(res == -1)
-        {
-            printf("WaitForMotion Error\n");
-            break;
-        }
+//        res = pDev[0]->WaitForMotionCompletion(5000);
+//        if(res == -1)
+//        {
+//            printf("WaitForMotion Error\n");
+//            break;
+//        }
 
-    }
-    printf("Oscillation Done\n");
-    sleep(1);
-
+//    }
+//    printf("Oscillation Done\n");
+//    sleep(1);
+    return 1;
 
 }
 
 int TestSyncPos()
 {
-    // ---------------------------------------------------------------
-    // CKim - Enable Cyclic Synch Position Mode
-    for (int i=0; i<numNodes; i++)
-    {
-        res = pDev[i]->SetOperationMode(SYNC_POS);
-        if (res == -1)
-        {
-            printf("Failed to set PosProfile Mode, device %d\n", pDev[i]->GetId());
-            cout << pDev[i]->GetErrorMsg() << endl;
-            return 0;
-        }
-    }
+    return 1;
+//    // ---------------------------------------------------------------
+//    // CKim - Enable Cyclic Synch Position Mode
+//    for (int i=0; i<numNodes; i++)
+//    {
+//        res = pDev[i]->SetOperationMode(SYNC_POS);
+//        if (res == -1)
+//        {
+//            printf("Failed to set PosProfile Mode, device %d\n", pDev[i]->GetId());
+//            cout << pDev[i]->GetErrorMsg() << endl;
+//            return 0;
+//        }
+//    }
 
-    struct timespec start, curr;
-    int pos;        int amp = 100000;    double elapsedTime = 0;
-    //printf("Current Position : %d\n", pDev[0]->ReadPosition());
-    int offset = pDev[0]->ReadPosition();
+//    struct timespec start, curr;
+//    int pos;        int amp = 100000;    double elapsedTime = 0;
+//    //printf("Current Position : %d\n", pDev[0]->ReadPosition());
+//    int offset = pDev[0]->ReadPosition();
 
-    printf("Starting Motion\n");
-    clock_gettime(CLOCK_REALTIME,&start);
-    while(elapsedTime < 5.0)
-    {
-        clock_gettime(CLOCK_REALTIME,&curr);
-        elapsedTime = (curr.tv_sec - start.tv_sec);
-        elapsedTime = elapsedTime + (curr.tv_nsec - start.tv_nsec)*1e-9;
+//    printf("Starting Motion\n");
+//    clock_gettime(CLOCK_REALTIME,&start);
+//    while(elapsedTime < 5.0)
+//    {
+//        clock_gettime(CLOCK_REALTIME,&curr);
+//        elapsedTime = (curr.tv_sec - start.tv_sec);
+//        elapsedTime = elapsedTime + (curr.tv_nsec - start.tv_nsec)*1e-9;
 
-        pos = offset+amp*sin(2.0*3.141592/2.0*elapsedTime);
+//        pos = offset+amp*sin(2.0*3.141592/2.0*elapsedTime);
 
-        //res = pDev[0]->MovePosProfile(pos, true);
-        res = pDev[0]->MovePosProfileUsingPDO(pos, false);
-        if(res == -1)
-        {
-            printf("MovePosProfile Error\n");
-            cout << pDev[0]->GetErrorMsg() << endl;
-            break;
-        }
+//        //res = pDev[0]->MovePosProfile(pos, true);
+//        res = pDev[0]->MovePosProfileUsingPDO(pos, false);
+//        if(res == -1)
+//        {
+//            printf("MovePosProfile Error\n");
+//            cout << pDev[0]->GetErrorMsg() << endl;
+//            break;
+//        }
 
-        usleep(750);
-    }
-    printf("Oscillation Done\n");
-    sleep(1);
+//        usleep(750);
+//    }
+//    printf("Oscillation Done\n");
+//    sleep(1);
 }
 
 int main()
@@ -375,24 +368,21 @@ int main()
         return -1;
     }
 
-    // CKim - Create EPOS object. Index is base 1.
-    for (int i=0; i<numNodes; i++)
-    {
-        pDev[i] = new EposCAN(i + 1);
-    }
+    // CKim - Create EposCAN object.
+    pDev = new EposCAN();
 
     // CKim - Switch On and Enable Device
-    for (int i=0; i<numNodes; i++)
+    for (int i=1; i<(1+numNodes); i++)
     {
-        res = pDev[i]->EnableDevice();
+        res = pDev->EnableDevice(i);
         if (res != 0)
         {
-            printf("Failed to Enable Device %d\n", pDev[i]->GetId());
-            cout << pDev[i]->GetErrorMsg() << endl;
+            printf("Failed to Enable Device %d\n", i);
+            cout << pDev->GetErrorMsg() << endl;
             return -1;
         }
         else {
-            printf("Enabled device %d\n",pDev[i]->GetId());
+            printf("Enabled device %d\n",i);
         }
         usleep(1000);
     }
@@ -405,12 +395,12 @@ int main()
 //    // CKim - Configure TxPDO1 and RxPDO1
 //    for (int i=0; i<numNodes; i++)
 //    {
-//        res = pDev[i]->DisablePDO();        if (res == -1)	{  break;    }
-//        res = pDev[i]->ConfigureTxPDO();    if (res == -1)	{  break;    }
-//        res = pDev[i]->ConfigureRxPDO();    if (res == -1)	{  break;    }
-//        //res = pDev[i]->SetTxPDOMapping(1);		if (res == -1)	{ break; }
-//        //res = pDev[i]->SetRxPDOMapping(1);		if (res == -1)	{ break; }
-//        res = pDev[i]->EnablePDO();         if (res == -1)	{  break;    }
+//        res = pDev->DisablePDO();        if (res == -1)	{  break;    }
+//        res = pDev->ConfigureTxPDO();    if (res == -1)	{  break;    }
+//        res = pDev->ConfigureRxPDO();    if (res == -1)	{  break;    }
+//        //res = pDev->SetTxPDOMapping(1);		if (res == -1)	{ break; }
+//        //res = pDev->SetRxPDOMapping(1);		if (res == -1)	{ break; }
+//        res = pDev->EnablePDO();         if (res == -1)	{  break;    }
 //    }
 //    if (res == -1)
 //    {
@@ -432,16 +422,16 @@ int main()
 
 
     // CKim - Disable Device
-    for (int i = 0; i < numNodes; i++)
+    for (int i=1; i<(1+numNodes); i++)
     {
-        res = pDev[i]->DisableDevice();
+        res = pDev->DisableDevice(i);
         if (res != 0)
         {
-            printf("Failed to Disable Device %d\n", pDev[i]->GetId());
+            printf("Failed to Disable Device %d\n", i);
             return -1;
         }
         else {
-            printf("Disabled device %d\n",pDev[i]->GetId());
+            printf("Disabled device %d\n", i);
         }
         usleep(1000);
     }

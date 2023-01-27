@@ -31,6 +31,8 @@
     typedef WindowsUSBCAN canInterface;
 #endif
 
+#define NUM_NODE 1
+
 // CKim - In linux, instead of Event, I'm using semaphore. So include following headers.
 #include <pthread.h>
 #include <semaphore.h>
@@ -106,6 +108,7 @@ private:
 
     // CKim - ID of the EPOS controller in CAN
     int			m_nodeId;
+    int			m_numNodes;
 
     // CKim - Mode of the EPOS controller (profile position, homing, velocity ...)
 	int			m_mode;
@@ -119,7 +122,7 @@ private:
     sem_t       m_MotionSema;
 
 public:
-    EposCAN(int n);
+    EposCAN();
     ~EposCAN();
 	
     int GetId()                 {	return m_nodeId;            }
@@ -131,55 +134,98 @@ public:
     static int ConnectCANport(const char* portName)    {   return(m_CANport.OpenCANport(portName));  }
 
     // CKim - Close CAN port
-    static int DisconnectCANport()   {   return(m_CANport.CloseCANport());     }
+    static int DisconnectCANport()  {   return(m_CANport.CloseCANport());     }
 
     // CKim - Send SYNC over entire network
-    static int SendSYNC()       {   return(m_CANport.SendSYNC());         }
+    static int SendSYNC()           {   return(m_CANport.SendSYNC());         }
 
-    // CKim - Enable the device
-    int EnableDevice();
-    int DisableDevice();
+    /**
+     * @brief Enable / Disable the device with nodeId
+     * @param nodeId : Node ID
+     * @return 0 on sucess, otherwise -1
+     */
+    int EnableDevice(int nodeId);
+    int DisableDevice(int nodeId);
 
-    //* CKim - Set Operation Mode
-	int SetOperationMode(int mode);
+    /**
+     * @brief Enable / Disable all the device in network
+     * @return 0 on sucess, otherwise -1
+     */
+    int EnableDeviceAll();
+    int DisableDeviceAll();
+
+    /**
+     * @brief SetOperationMode of the device with nodeId.
+     * Operation modes are defined as enum OP_MODE in the header
+     * @param nodeId : Node ID
+     * @return 0 on sucess, otherwise -1
+     */
+    int SetOperationMode(int nodeId, int mode);
+    int SetOperationModeAll(int mode);
+
     // -------------------------------------------
 
-    // -------------------------------------------
-    uint16_t GetStatus()        {	return m_statusWord;            }
-    uint16_t ReadControlWord();
-    uint16_t ReadStatusWord();
-    // -------------------------------------------
+    /**
+     * @brief Various read function using SDO read
+     * @return 0 on sucess, otherwise -1
+     */
+    uint16_t ReadControlWord(int nodeId);
+    uint16_t ReadStatusWord(int nodeId);
+    int ReadPosition(int nodeId);
+
+    /**
+     * @brief Halt motion by setting status word
+     * @return 0 on sucess, otherwise -1
+     */
+    int HaltAxis(int nodeId);
+    int HaltAxisAll();
 
     // -------------------------------------------
-	// CKim - Get/Set PID gain of the position control loop
-	int GetPositionControlGain(uint16_t& P, uint16_t& I, uint16_t& D);
-	int SetPositionControlGain(const uint16_t& P, const uint16_t& I, const uint16_t& D);
-
 	// CKim - Get/Set Position Profile Motion Parameter
-	int GetPositionProfileParam(ProfilePosParam& P);
-	int SetPositionProfileParam(const ProfilePosParam& P);
+    int GetPositionProfileParam(int nodeId, ProfilePosParam& P);
+    int SetPositionProfileParam(int nodeId, const ProfilePosParam& P);
 
     // CKim - Move to target position
-    int MovePosProfile(int32_t pos, bool rel);
-
-    // CKim - Halt motion by setting status word
-    int HaltAxis();
+    int MovePosProfile(int nodeId, int32_t pos, bool rel);
 
     // CKim - Wait for Profile Motion Completion
-    int WaitForMotionCompletion(long timeoutmsec);
+    int WaitForMotionCompletion(int nodeId, long timeoutmsec);
+    int WaitForMotionCompletionAll(long timeoutmsec);
 
-    // CKim - Get Position
-    int ReadPosition();
     // -------------------------------------------
 
     // -------------------------------------------
     // CKim - Get/Set Velocity Profile Motion Parameter
-    int GetVelocityProfileParam(ProfileVelParam& P);
-    int SetVelocityProfileParam(const ProfileVelParam& P);
+    int GetVelocityProfileParam(int nodeId, ProfileVelParam& P);
+    int SetVelocityProfileParam(int nodeId, const ProfileVelParam& P);
 
     // CKim - Move in target velocity. Unit is in rpm
-    int MoveVelProfile(int32_t vel);
+    int MoveVelProfile(int nodeId, int32_t vel);
     // -------------------------------------------
+
+    // -------------------------------------------
+    // CKim - Enable/Disable PDO by sending NMT message
+    int EnablePDO(int nodeId);
+    int DisablePDO(int nodeId);
+
+    // CKim - Hack this function to change Transmit PDO 1-4 of the device.
+    // This configures TxPDO and sets the mapping of the 8 bytes of data that is transmitted from EPOS to PC
+    // Also hack CAN_ReadThread to decode the TxPDO accordingly
+    int ConfigureTxPDO();
+
+    // CKim - Hack this function to change Receive PDO 1-4 of the device.
+    // This configures RxPDO and sets the mapping of the 8 bytes of data that EPOS receives from PC
+    int ConfigureRxPDO();
+
+//    // CKim - Set Transmit PDO Mapping - This configures n th TxPDO of nodeID,
+//    int SetTxPDOMapping(int n);
+
+//    // CKim - Set Transmit PDO Mapping - This configures n th TxPDO of nodeID,
+//    int SetRxPDOMapping(int n);
+
+    int NotifyPDO(int n, const char* buf);
+    // -------------------------------------------
+
 
     // -------------------------------------------
     // CKim - Get/Set Homing parameters
@@ -191,28 +237,12 @@ public:
 	bool IsHomingAttained();
     // -------------------------------------------
 
-    // -------------------------------------------
-    // CKim - Enable/Disable PDO by sending NMT message
-    int EnablePDO();
-    int DisablePDO();
 
-    // CKim - Hack this function to change Transmit PDO 1-4 of the device.
-    // This configures TxPDO and sets the mapping of the 8 bytes of data that is transmitted from EPOS to PC
-	// Also hack CAN_ReadThread to decode the TxPDO accordingly
-	int ConfigureTxPDO();
-	
-	// CKim - Hack this function to change Receive PDO 1-4 of the device.
-	// This configures RxPDO and sets the mapping of the 8 bytes of data that EPOS receives from PC
-	int ConfigureRxPDO();
+    // CKim - Get/Set PID gain of the position control loop
+    int GetPositionControlGain(uint16_t& P, uint16_t& I, uint16_t& D);
+    int SetPositionControlGain(const uint16_t& P, const uint16_t& I, const uint16_t& D);
 
-//    // CKim - Set Transmit PDO Mapping - This configures n th TxPDO of nodeID,
-//    int SetTxPDOMapping(int n);
-
-//    // CKim - Set Transmit PDO Mapping - This configures n th TxPDO of nodeID,
-//    int SetRxPDOMapping(int n);
-
-    int NotifyPDO(int n, const char* buf);
-    // -------------------------------------------
+        uint16_t GetStatus()        {	return m_statusWord;            }
 
     // -------------------------------------------
     // CKim - Move in Position Profile Mode. Motion starts immediately
@@ -230,10 +260,8 @@ private:
     int SDO_write(SDO_data* d)  {   return m_CANport.SendSDO(d,SDO_WRITE);    };
     int SDO_read(SDO_data* d)   {   return m_CANport.SendSDO(d,SDO_READ);    };
 
-
-
-    // CKim - PDO Cycling functions will be needed.    // CKim - Function that runs in separate thread and continuously read incoming CAN packets
-    //    static void* CAN_ReadThread(void* pData);
+    // CKim - PDO Exchange functions running in separate thread
+    static void* PDOExchageThread(void* pData);
 
 
 };

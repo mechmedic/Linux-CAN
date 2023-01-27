@@ -4,6 +4,7 @@ CONFIG -= app_bundle
 CONFIG -= qt
 
 SOURCES += \
+    eposslave.cpp \
         main.cpp \
     linuxsocketcan.cpp \
     EposCAN.cpp \
@@ -11,6 +12,7 @@ SOURCES += \
 
 HEADERS += \
     CANopenDefs.h \
+    eposslave.h \
     linuxsocketcan.h \
     EposCAN.h \
     windowsusb2can.h

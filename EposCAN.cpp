@@ -8,10 +8,9 @@
 //EposCAN* EposCAN::m_pDev[10] = { 0 };
 canInterface EposCAN::m_CANport;
 
-EposCAN::EposCAN(int n)
+EposCAN::EposCAN()
 {
-    m_nodeId = n;
-
+    //m_nodeId = n;
     //    // ---------------------------------------------------------------
     //    // CKim - Launch CAN Read Thread
     //    pthread_create(&m_hReadThrd, NULL, LinuxSocketCAN::CAN_ReadThread, 0);
@@ -23,9 +22,7 @@ EposCAN::~EposCAN()
 
 }
 
-
-// CKim - Enable EPOS.
-int EposCAN::EnableDevice()
+int EposCAN::EnableDevice(int nodeId)
 {
     // CKim - When the device is turned on it is in "Switch On Disabled" state. Status word (0x6041) being x0xx xxx1 x100 0000 = 0x0540
     // The state must be transited to  "Switch On Disabled" -> "Ready to Switch On" -> "Switched On" -> "Enable"
@@ -34,125 +31,153 @@ int EposCAN::EnableDevice()
 
     // CKim - "Switch On Disabled" -> "Ready to Switch On" transition happens when
     // Lower Bytes of Controlword (idx 0x6040) is set to 0xxx x110. For example 0000 0110 = 0x06
-    pack.nodeid = m_nodeId;	 pack.index = 0x6040;	pack.subindex = 0x00;	pack.sz = 2;	pack.data = 0x0006;
+    pack.nodeid = nodeId;	 pack.index = 0x6040;	pack.subindex = 0x00;	pack.sz = 2;	pack.data = 0x0006;
     if(!SDO_write(&pack)) {}
     else    {   return -1;   }
 
     // CKim -  "Ready to Switch On" -> "Switched On" transition happens when
     // Lower Bytes of Controlword (idx 0x6040) is set to 0xxx x111. For example 0000 0111 = 0x07
-    pack.nodeid = m_nodeId;	 pack.index = 0x6040;	pack.subindex = 0x00;	pack.sz = 2;	pack.data = 0x0007;
+    pack.nodeid = nodeId;	 pack.index = 0x6040;	pack.subindex = 0x00;	pack.sz = 2;	pack.data = 0x0007;
     if(!SDO_write(&pack)) {}
     else    {   return -1;   }
 
     // CKim -  "Switched On" -> "Enable" transition happens when
     // Lower Bytes of Controlword (idx 0x6040) is set to 0xxx x111. For example 0000 0111 = 0x0F
-    pack.nodeid = m_nodeId;	 pack.index = 0x6040;	pack.subindex = 0x00;	pack.sz = 2;	pack.data = 0x000F;
+    pack.nodeid = nodeId;	 pack.index = 0x6040;	pack.subindex = 0x00;	pack.sz = 2;	pack.data = 0x000F;
     if(!SDO_write(&pack)) {}
     else    {   return -1;   }
 
     return 0;
 }
 
-// CKim - Disable EPOS.
-int EposCAN::DisableDevice()
+int EposCAN::DisableDevice(int nodeId)
 {
     // CKim - To turn off the device, state must be transited to
     // "Enable" -> "Switched On" -> "Ready to Switch On" -> "Switch On Disabled"
     // by writing appropriate Control word (0x6040)
-    SDO_data pack;  int ret;
+    SDO_data pack;
 
     // CKim - "Enable" -> "Switched On" transition (torque is disabled) happens when
     // Lower Bytes of Controlword (idx 0x6040) is set to 0xxx 0111. For example 0000 0111 = 0x07
-    pack.nodeid = m_nodeId;	 pack.index = 0x6040;	pack.subindex = 0x00;	pack.sz = 2;	pack.data = 0x0007;
+    pack.nodeid = nodeId;	 pack.index = 0x6040;	pack.subindex = 0x00;	pack.sz = 2;	pack.data = 0x0007;
     if(!SDO_write(&pack)) {}
     else    {   return -1;   }
 
     // CKim -  "Switched On" -> "Ready to Switch On" transition (power is disabled) happens when
     // Lower Bytes of Controlword (idx 0x6040) is set to 0xxx x110. For example 0000 0110 = 0x06
-    pack.nodeid = m_nodeId;	 pack.index = 0x6040;	pack.subindex = 0x00;	pack.sz = 2;	pack.data = 0x0006;
+    pack.nodeid = nodeId;	 pack.index = 0x6040;	pack.subindex = 0x00;	pack.sz = 2;	pack.data = 0x0006;
     if(!SDO_write(&pack)) {}
     else    {   return -1;   }
 
     // CKim - "Ready to Switch On" -> "Switch On Disabled" transition happens when
     // Lower Bytes of Controlword (idx 0x6040) is set to 0xxx xx0x. For example 0000 0000 = 0x00
-    pack.nodeid = m_nodeId;	 pack.index = 0x6040;	pack.subindex = 0x00;	pack.sz = 2;	pack.data = 0x0000;
+    pack.nodeid = nodeId;	 pack.index = 0x6040;	pack.subindex = 0x00;	pack.sz = 2;	pack.data = 0x0000;
     if(!SDO_write(&pack)) {}
     else    {   return -1;   }
 
     return 0;
 }
 
-// CKim - Set Operating modes needs to be updated for EPOS4
-int EposCAN::SetOperationMode(int mode)
+int EposCAN::EnableDeviceAll()
 {
-    SDO_data pack;      int ret;
-    pack.nodeid = m_nodeId;	 pack.index = 0x6060;	pack.subindex = 0x00;	pack.sz = 1;
+    for(int i=0; i<NUM_NODE; i++){
+        if(EnableDevice(i)) {   return -1;  }
+    }
+    return 0;
+}
+
+int EposCAN::DisableDeviceAll()
+{
+    for(int i=0; i<NUM_NODE; i++){
+        if(DisableDevice(i)) {   return -1;  }
+    }
+    return 0;
+}
+
+int EposCAN::SetOperationMode(int nodeId, int mode)
+{
+    SDO_data pack;
+    pack.nodeid = nodeId;	 pack.index = 0x6060;	pack.subindex = 0x00;	pack.sz = 1;
 
     if ((mode == HOMING) || (mode == PROFILE_POS) || (mode == PROFILE_VEL) || (mode == POSITION)
         || (mode == VELOCITY) || (mode == CURRENT) || (mode == SYNC_POS) || (mode == SYNC_VEL) || (mode == SYNC_TRQ))
     {
         pack.data = mode;
-        ret = m_CANport.SendSDO(&pack,SDO_WRITE);
-        if (ret!=0) {   return -1;   }
-        else
-        {
+        if(!SDO_write(&pack)) {
             m_mode = mode;
             return 0;
         }
+        else    {   return -1;   }
     }
-    else
-    {
+    else {
         return -1;
     }
 }
 
-uint16_t EposCAN::ReadControlWord()
+int EposCAN::SetOperationModeAll(int mode)
+{
+    for(int i=0; i<NUM_NODE; i++){
+        if(SetOperationMode(i, mode)) {   return -1;  }
+    }
+    return 0;
+}
+
+// -----------------------------------------
+uint16_t EposCAN::ReadControlWord(int nodeId)
 {
     SDO_data pack;
-    pack.nodeid = m_nodeId;
+    pack.nodeid = nodeId;
 
     pack.index = 0x6040;	pack.subindex = 0x00;
     if (!SDO_read(&pack))	{ return pack.data; }
     else	{ return -1; }
 }
 
-uint16_t EposCAN::ReadStatusWord()
+uint16_t EposCAN::ReadStatusWord(int nodeId)
 {
     SDO_data pack;
-    pack.nodeid = m_nodeId;
+    pack.nodeid = nodeId;
 
     pack.index = 0x6041;	pack.subindex = 0x00;
     if (!SDO_read(&pack))	{ return pack.data; }
     else	{ return -1; }
 }
 
-int EposCAN::ReadPosition()
+int EposCAN::ReadPosition(int nodeId)
 {
     SDO_data pack;
-    pack.nodeid = m_nodeId;
+    pack.nodeid = nodeId;
 
     pack.index = 0x6064;	pack.subindex = 0x00;
     if (!SDO_read(&pack))	{ return pack.data; }
     else	{ return -1; }
 }
 
-int EposCAN::HaltAxis()
+int EposCAN::HaltAxis(int nodeId)
 {
     SDO_data pack;
 
     // CKim - Set bit 8 of the control word to stop motion
-    pack.nodeid = m_nodeId;	 pack.index = 0x6040;	pack.subindex = 0x00;	pack.sz = 2;
+    pack.nodeid = nodeId;	 pack.index = 0x6040;	pack.subindex = 0x00;	pack.sz = 2;
     pack.data = 0x010F;
 
     if (!SDO_write(&pack))	{ return 0; }
     else					{ return -1; }
 }
 
+int EposCAN::HaltAxisAll()
+{
+    for(int i=0; i<NUM_NODE; i++){
+        if(HaltAxis(i)) {   return -1;  }
+    }
+    return 0;
+}
+
 // -----------------------------------------
-int EposCAN::GetPositionProfileParam(ProfilePosParam& P)
+int EposCAN::GetPositionProfileParam(int nodeId, ProfilePosParam& P)
 {
     SDO_data pack;
-    pack.nodeid = m_nodeId;
+    pack.nodeid = nodeId;
 
     // returns 0 when successful
 
@@ -187,10 +212,10 @@ int EposCAN::GetPositionProfileParam(ProfilePosParam& P)
     return 0;
 }
 
-int EposCAN::SetPositionProfileParam(const ProfilePosParam& P)
+int EposCAN::SetPositionProfileParam(int nodeId, const ProfilePosParam& P)
 {
     SDO_data pack;
-    pack.nodeid = m_nodeId;
+    pack.nodeid = nodeId;
 
     // returns 0 when successful
 
@@ -221,17 +246,17 @@ int EposCAN::SetPositionProfileParam(const ProfilePosParam& P)
     return 0;
 }
 
-int EposCAN::MovePosProfile(int32_t pos, bool rel)
+int EposCAN::MovePosProfile(int nodeId, int32_t pos, bool rel)
 {
     SDO_data pack;
 
     // CKim - EPOS4 only : Set control word to 0x000F to receive new setpoint
-    pack.nodeid = m_nodeId;	 pack.index = 0x6040;	pack.subindex = 0x00;	pack.sz = 2;     pack.data = 0x000F;
+    pack.nodeid = nodeId;	 pack.index = 0x6040;	pack.subindex = 0x00;	pack.sz = 2;     pack.data = 0x000F;
     if (!SDO_write(&pack))	{ }
     else					{ return -1; }
 
     // CKim - Write new target position value
-    pack.nodeid = m_nodeId;     pack.index = 0x607A;	pack.subindex = 0x00;	pack.sz = 4;	pack.data = pos;
+    pack.nodeid = nodeId;     pack.index = 0x607A;	pack.subindex = 0x00;	pack.sz = 4;	pack.data = pos;
     if (!SDO_write(&pack))	{}
     else	{ return -1; }
 
@@ -240,7 +265,7 @@ int EposCAN::MovePosProfile(int32_t pos, bool rel)
     // bit 4-7 : 4. 1 New Set Point  5. (0 finish positioning before change setpoint. 1. immedeately change setpoint)
     // 6. 0 absolute, 1 relative, 7. Fault Reset (1 indicates fault),
     // bit 8-11 : 8. Halt
-    pack.nodeid = m_nodeId;	 pack.index = 0x6040;	pack.subindex = 0x00;	pack.sz = 2;
+    pack.nodeid = nodeId;	 pack.index = 0x6040;	pack.subindex = 0x00;	pack.sz = 2;
     if (rel) 	{ pack.data = 0x007F; }
     else		{ pack.data = 0x003F; }
 
@@ -248,69 +273,92 @@ int EposCAN::MovePosProfile(int32_t pos, bool rel)
     else					{ return -1; }
 }
 
-int EposCAN::WaitForMotionCompletion(long timeoutmsec)
+int EposCAN::WaitForMotionCompletion(int nodeId, long timeoutmsec)
 {
+    uint16_t motionStatus;
+
     long sec = timeoutmsec/1000;
     long nsec = (timeoutmsec%1000)*1e6;
-    struct timespec ts;     int err = 0;
-    clock_gettime(CLOCK_REALTIME,&ts);
-    ts.tv_sec += sec;
-    ts.tv_nsec += nsec;
-    err = sem_timedwait(&m_MotionSema,&ts);
-    if(err == -1)   {
-        //perror("Semaphore");
-        printf("WaitForMotion time out\n");
-        return -1;
+    struct timespec start, now;
+    double elapsedTime;
+
+    clock_gettime(CLOCK_REALTIME,&start);
+    start.tv_sec += sec;
+    start.tv_nsec += nsec;
+
+    while(1)
+    {
+        motionStatus= ReadStatusWord(nodeId);
+
+        // CKim - In profile position mode, bit 12 and bit 10 of
+        // the status word is set to 1 when motion is complete
+        if((motionStatus & 0x1400) == 0x1400) {     break;      }
+
+        clock_gettime(CLOCK_REALTIME,&now);
+        elapsedTime = (now.tv_sec - start.tv_sec);
+        elapsedTime = elapsedTime + (now.tv_nsec - start.tv_nsec)*1e-9;
+        if(elapsedTime*1000 > timeoutmsec)
+        {
+            printf("Motion Waiting Timed Out %f\n",elapsedTime);
+            return -1;
+        }
     }
-    return 1;
-}
-
-int EposCAN::GetPositionControlGain(uint16_t& P, uint16_t& I, uint16_t& D)
-{
-    SDO_data pack;
-    pack.nodeid = m_nodeId;	 pack.index = 0x60FB;	pack.subindex = 0x01;
-
-    // returns 0 when successful
-    if (!SDO_read(&pack))	{ P = pack.data; }
-    else	{ return -1; }
-
-    pack.subindex = 0x02;
-    if (!SDO_read(&pack))	{ I = pack.data; }
-    else	{ return -1; }
-
-    pack.subindex = 0x03;
-    if (!SDO_read(&pack))	{ D = pack.data; }
-    else	{ return -1; }
+    printf("Motion Complete\n");
     return 0;
+
+    //    err = sem_timedwait(&m_MotionSema,&ts);
+    //    if(err == -1)   {
+    //        //perror("Semaphore");
+    //        printf("WaitForMotion time out\n");
+    //        return -1;
+    //    }
+
 }
 
-int EposCAN::SetPositionControlGain(const uint16_t& P, const uint16_t& I, const uint16_t& D)
+int EposCAN::WaitForMotionCompletionAll(long timeoutmsec)
 {
-    SDO_data pack;
-    pack.nodeid = m_nodeId;	 pack.index = 0x60FB;	pack.sz = 2;
-    // returns 0 when successful
+    uint16_t motionStatus;
+    int cnt = 0;
 
-    pack.subindex = 0x01;		pack.data = P;
-    if (!SDO_write(&pack))	{}
-    else	{ return -1; }
+    long sec = timeoutmsec/1000;
+    long nsec = (timeoutmsec%1000)*1e6;
+    struct timespec start, now;
+    double elapsedTime;
 
-    pack.subindex = 0x02;		pack.data = I;
-    if (!SDO_write(&pack))	{}
-    else	{ return -1; }
+    clock_gettime(CLOCK_REALTIME,&start);
+    start.tv_sec += sec;
+    start.tv_nsec += nsec;
 
-    pack.subindex = 0x03;		pack.data = D;
-    if (!SDO_write(&pack))	{}
-    else	{ return -1; }
+    while(1)
+    {
+        for(int i=1; i<(NUM_NODE+1); i++)
+        {
+            motionStatus= ReadStatusWord(i);
+
+            // CKim - In profile position mode, bit 12 and bit 10 of
+            // the status word is set to 1 when motion is complete
+            if((motionStatus & 0x1400) == 0x1400) {     cnt++;  }
+            if(cnt == NUM_NODE) {   break;      }
+
+            clock_gettime(CLOCK_REALTIME,&now);
+            elapsedTime = (now.tv_sec - start.tv_sec);
+            elapsedTime = elapsedTime + (now.tv_nsec - start.tv_nsec)*1e-9;
+            if(elapsedTime*1000 > timeoutmsec)
+            {
+                printf("Motion Waiting Timed Out %f\n",elapsedTime);
+                return -1;
+            }
+        }
+    }
+    printf("Motion Complete\n");
     return 0;
 }
 
 // -----------------------------------------
-
-// -----------------------------------------
-int EposCAN::GetVelocityProfileParam(ProfileVelParam& P)
+int EposCAN::GetVelocityProfileParam(int nodeId, ProfileVelParam& P)
 {
     SDO_data pack;
-    pack.nodeid = m_nodeId;
+    pack.nodeid = nodeId;
 
     // returns 0 when successful
 
@@ -335,13 +383,12 @@ int EposCAN::GetVelocityProfileParam(ProfileVelParam& P)
     else	{ return -1; }
 
     return 0;
-
 }
 
-int EposCAN::SetVelocityProfileParam(const ProfileVelParam& P)
+int EposCAN::SetVelocityProfileParam(int nodeId, const ProfileVelParam& P)
 {
     SDO_data pack;
-    pack.nodeid = m_nodeId;
+    pack.nodeid = nodeId;
 
     // returns 0 when successful
 
@@ -368,162 +415,32 @@ int EposCAN::SetVelocityProfileParam(const ProfileVelParam& P)
     return 0;
 }
 
-int EposCAN::MoveVelProfile(int32_t vel)
+int EposCAN::MoveVelProfile(int nodeId, int32_t vel)
 {
     SDO_data pack;
 
     // CKim - Write new target velocity value. Object Index is 0x60FF
-    pack.nodeid = m_nodeId;     pack.index = 0x60FF;	pack.subindex = 0x00;	pack.sz = 4;	pack.data = vel;
+    pack.nodeid = nodeId;     pack.index = 0x60FF;	pack.subindex = 0x00;	pack.sz = 4;	pack.data = vel;
     if (!SDO_write(&pack))	{}
     else	{ return -1; }
 
     // CKim - Set control word to 0x000F to start moving
-    pack.nodeid = m_nodeId;	 pack.index = 0x6040;	pack.subindex = 0x00;	pack.sz = 2;
+    pack.nodeid = nodeId;	 pack.index = 0x6040;	pack.subindex = 0x00;	pack.sz = 2;
     pack.data = 0x000F;
 
     if (!SDO_write(&pack))	{ return 0; }
     else					{ return -1; }
-
 }
-// -----------------------------------------
 
 // -----------------------------------------
-int EposCAN::GetHomingParam(HomingParam& H)
+int EposCAN::EnablePDO(int nodeId)
 {
-	SDO_data pack;
-	pack.nodeid = m_nodeId;
-
-	// returns 0 when successful
-
-	pack.index = 0x6065;	pack.subindex = 0x00;
-	if (!SDO_read(&pack))	{ H.MaxFollowingError = pack.data; }
-	else	{ return -1; }
-
-	pack.index = 0x607F;	pack.subindex = 0x00;
-	if (!SDO_read(&pack))	{ H.MaxProfileVelocity = pack.data; }
-	else	{ return -1; }
-
-	pack.index = 0x6085;	pack.subindex = 0x00;
-	if (!SDO_read(&pack))	{ H.QuickStopDecel = pack.data; }
-	else	{ return -1; }
-
-	pack.index = 0x6099;	pack.subindex = 0x01;
-	if (!SDO_read(&pack))	{ H.SpeedForSwitchSearch = pack.data; }
-	else	{ return -1; }
-
-	pack.index = 0x6099;	pack.subindex = 0x02;
-	if (!SDO_read(&pack))	{ H.SpeedForZeroSearch = pack.data; }
-	else	{ return -1; }
-
-	pack.index = 0x609A;	pack.subindex = 0x00;
-	if (!SDO_read(&pack))	{ H.HomingAccel = pack.data; }
-	else	{ return -1; }
-
-	pack.index = 0x2080;	pack.subindex = 0x00;
-	if (!SDO_read(&pack))	{ H.CurrentThresholdHoming = pack.data; }
-	else	{ return -1; }
-
-	pack.index = 0x607c;	pack.subindex = 0x00;
-	if (!SDO_read(&pack))	{ H.HomeOffset = pack.data; }
-	else	{ return -1; }
-
-	pack.index = 0x6098;	pack.subindex = 0x00;
-	if (!SDO_read(&pack))	{ H.HomingMethod = pack.data; }
-	else	{ return -1; }
-
-	return 0;
+    m_CANport.SendNMT(NMT_OPERATIONAL, nodeId);
 }
 
-int EposCAN::SetHomingParam(const HomingParam& H)
+int EposCAN::DisablePDO(int nodeId)
 {
-	SDO_data pack;
-	pack.nodeid = m_nodeId;
-
-	// returns 0 when successful
-
-	pack.index = 0x6065;	pack.subindex = 0x00;	pack.sz = 4;	pack.data = H.MaxFollowingError;
-	if (!SDO_write(&pack))	{}
-	else	{ return -1; }
-
-	pack.index = 0x607F;	pack.subindex = 0x00;	pack.sz = 4;	pack.data = H.MaxProfileVelocity;
-	if (!SDO_write(&pack))	{}
-	else	{ return -1; }
-
-	pack.index = 0x6085;	pack.subindex = 0x00;	pack.sz = 4;	pack.data = H.QuickStopDecel;
-	if (!SDO_write(&pack))	{}
-	else	{ return -1; }
-
-	pack.index = 0x6099;	pack.subindex = 0x01;	pack.sz = 4;	pack.data = H.SpeedForSwitchSearch;
-	if (!SDO_write(&pack))	{}
-	else	{ return -1; }
-
-	pack.index = 0x6099;	pack.subindex = 0x02;	pack.sz = 4;	pack.data = H.SpeedForZeroSearch;
-	if (!SDO_write(&pack))	{}
-	else	{ return -1; }
-
-	pack.index = 0x609A;	pack.subindex = 0x00;	pack.sz = 4;	pack.data = H.HomingAccel;
-	if (!SDO_write(&pack))	{}
-	else	{ return -1; }
-
-	pack.index = 0x2080;	pack.subindex = 0x00;	pack.sz = 2;	pack.data = H.CurrentThresholdHoming;
-	if (!SDO_write(&pack))	{}
-	else	{ return -1; }
-
-	pack.index = 0x607c;	pack.subindex = 0x00;	pack.sz = 4;	pack.data = H.HomeOffset;
-	if (!SDO_write(&pack))	{}
-	else	{ return -1; }
-
-	pack.index = 0x6098;	pack.subindex = 0x00;	pack.sz = 1;	pack.data = H.HomingMethod;
-	if (!SDO_write(&pack))	{}
-	else	{ return -1; }
-
-	return 0;
-}
-
-int EposCAN::StartHoming()
-{
-    // CKim - Need some status check code.......
-
-    // CKim - Control word for Homing mode
-    // bit 4-7 : 4. Homing Start, 7. Fault Reset (1 indicates fault),
-    // bit 8-11 : 8. Halt
-    // To start homing bit 4 transition from 0 -> 1
-    SDO_data pack;
-
-    pack.nodeid = m_nodeId;	 pack.index = 0x6040;	pack.subindex = 0x00;	pack.sz = 2;	pack.data = 0x000F;
-    if (!SDO_write(&pack))	{}
-    else						{ return -1; }
-
-    pack.nodeid = m_nodeId;	 pack.index = 0x6040;	pack.subindex = 0x00;	pack.sz = 2;	pack.data = 0x001F;
-    if (!SDO_write(&pack))	{ return 0; }
-    else						{ return -1; }
-}
-
-bool EposCAN::IsHomingAttained()
-{
-    if (m_mode != HOMING)		{	return false;		}
-    if (GetStatus() & 0x1000)	// Bit 12 of the status word is 1 when homed
-    {
-        return true;
-    }
-    else
-    {
-        return false;
-    }
-}
-// -----------------------------------------
-
-// -----------------------------------------
-// CKim - Enable PDO by setting slave to operational state using NMT message
-int EposCAN::EnablePDO()
-{
-    m_CANport.SendNMT(NMT_OPERATIONAL,m_nodeId);
-}
-
-// CKim - Disable PDO by setting slave to pre-operational state using NMT message
-int EposCAN::DisablePDO()
-{
-    m_CANport.SendNMT(NMT_PREOPERATIONAL,m_nodeId);
+    m_CANport.SendNMT(NMT_PREOPERATIONAL, nodeId);
 }
 
 // CKim - TxPDO is from EPOS to PC
@@ -767,7 +684,259 @@ int EposCAN::NotifyPDO(int n, const char* buff)
 //    }
 //    // ------------------------------------------------------
 }
+
+void* EposCAN::PDOExchageThread(void* pData)
+{
+    //    // CKim - Handle to the class is passed as a parameter to thread function.
+    //    //LinuxSocketCAN* ptr = (LinuxSocketCAN*) pData;
+
+    //    // CKim - Create event Object for signaling SDO read/write
+    //    //m_hSDO_Event = CreateEvent(NULL, FALSE, FALSE, _T("SDOEvent"));	//	null security, auto reset, initially non-signaled, name
+    //    sem_init(&m_hSDO_Sema,0,0);
+
+    //    // CKim - Create event Object for signaling PDO read/write
+    //    //m_hPDO_Event = CreateEvent(NULL, FALSE, FALSE, _T("PDOEvent"));	//	null security, auto reset, initially non-signaled, name
+    //    //sem_init(&(ptr->m_hPDO_Sema),0,0);
+
+    //    // CKim - Receive response
+    //    long id;	int len;	char buf[8];	//int ext, rtr;
+
+    //    struct can_frame frame;     int nbytes;
+
+    while (1)
+    {
+        // CKim - Send RxPDO
+        // CKim - Call SYNC to tel/ devices to send TxPDO
+        // CKim - Read and Process TxPDO. Save to epos slave class.
+    //        // -------------------------------------------------------------
+    //        // CKim - Read CAN frame. SocketCAN uses 'read' functions
+    //        nbytes = read(m_hd,&frame,sizeof(struct can_frame));
+
+    //        if (nbytes < 0) {
+    //            perror("can raw socket read");
+    //            break;//return 1;
+    //        }
+
+    //        /* paranoid check ... */
+    //        if (nbytes < sizeof(struct can_frame)) {
+    //            fprintf(stderr, "read: incomplete CAN frame\n");
+    //            break;//return 1;
+    //        }
+
+    //        id = frame.can_id;
+    //        for(int i=0; i<8; i++)   {   buf[i] = frame.data[i];     }
+    //        // -------------------------------------------------------------
+
+            // -------------------------------------------------------------
+            // CKim - Classify the object based on Command Object ID (COB-ID)
+    //        if ((id & TX_PDO1) == TX_PDO1)
+    //        {
+    //            // CKim - Notify device arrival of TxPDO
+    //            int nodeId = id - TX_PDO1;
+    //            //printf("TX_PDO1 from node %d\n", nodeId);
+    //            m_pDev[nodeId-1]->NotifyPDO(0,buf);
+    //        }
+    //        else if ((id & TX_PDO2) == TX_PDO2)
+    //        {
+    //            // CKim - Notify device arrival of TxPDO
+    //            int nodeId = id - TX_PDO2;
+    //            //printf("TX_PDO2 from node %d\n", nodeId);
+    //            m_pDev[nodeId-1]->NotifyPDO(1,buf);
+    //        }
+    //        else if ((id & TX_PDO3) == TX_PDO3)
+    //        {
+    //            // CKim - Notify device arrival of TxPDO
+    //            int nodeId = id - TX_PDO3;
+    //            //printf("TX_PDO3 from node %d\n", nodeId);
+    //            m_pDev[nodeId-1]->NotifyPDO(2,buf);
+    //        }
+    //        else if ((id & TX_PDO4) == TX_PDO4)
+    //        {
+    //            // CKim - Notify device arrival of TxPDO
+    //            int nodeId = id - TX_PDO4;
+    //            //printf("TX_PDO4 from node %d\n", nodeId);
+    //            m_pDev[nodeId-1]->NotifyPDO(3,buf);
+    //        }
+    //        else
+    //        {
+    //            // CKim - Other Data
+    //            printf("Unknown COB-ID 0x%04X  ", id);
+    //            for (int i = 0; i < len; i++)	{ printf("0x%02X ", (unsigned char)buf[i]); }
+    //            printf("\n");
+    //        }
+    }	// while
+
+}
+
 // -----------------------------------------
+
+
+
+// -----------------------------------------
+int EposCAN::GetHomingParam(HomingParam& H)
+{
+    SDO_data pack;
+    pack.nodeid = m_nodeId;
+
+    // returns 0 when successful
+
+    pack.index = 0x6065;	pack.subindex = 0x00;
+    if (!SDO_read(&pack))	{ H.MaxFollowingError = pack.data; }
+    else	{ return -1; }
+
+    pack.index = 0x607F;	pack.subindex = 0x00;
+    if (!SDO_read(&pack))	{ H.MaxProfileVelocity = pack.data; }
+    else	{ return -1; }
+
+    pack.index = 0x6085;	pack.subindex = 0x00;
+    if (!SDO_read(&pack))	{ H.QuickStopDecel = pack.data; }
+    else	{ return -1; }
+
+    pack.index = 0x6099;	pack.subindex = 0x01;
+    if (!SDO_read(&pack))	{ H.SpeedForSwitchSearch = pack.data; }
+    else	{ return -1; }
+
+    pack.index = 0x6099;	pack.subindex = 0x02;
+    if (!SDO_read(&pack))	{ H.SpeedForZeroSearch = pack.data; }
+    else	{ return -1; }
+
+    pack.index = 0x609A;	pack.subindex = 0x00;
+    if (!SDO_read(&pack))	{ H.HomingAccel = pack.data; }
+    else	{ return -1; }
+
+    pack.index = 0x2080;	pack.subindex = 0x00;
+    if (!SDO_read(&pack))	{ H.CurrentThresholdHoming = pack.data; }
+    else	{ return -1; }
+
+    pack.index = 0x607c;	pack.subindex = 0x00;
+    if (!SDO_read(&pack))	{ H.HomeOffset = pack.data; }
+    else	{ return -1; }
+
+    pack.index = 0x6098;	pack.subindex = 0x00;
+    if (!SDO_read(&pack))	{ H.HomingMethod = pack.data; }
+    else	{ return -1; }
+
+    return 0;
+}
+
+int EposCAN::SetHomingParam(const HomingParam& H)
+{
+    SDO_data pack;
+    pack.nodeid = m_nodeId;
+
+    // returns 0 when successful
+
+    pack.index = 0x6065;	pack.subindex = 0x00;	pack.sz = 4;	pack.data = H.MaxFollowingError;
+    if (!SDO_write(&pack))	{}
+    else	{ return -1; }
+
+    pack.index = 0x607F;	pack.subindex = 0x00;	pack.sz = 4;	pack.data = H.MaxProfileVelocity;
+    if (!SDO_write(&pack))	{}
+    else	{ return -1; }
+
+    pack.index = 0x6085;	pack.subindex = 0x00;	pack.sz = 4;	pack.data = H.QuickStopDecel;
+    if (!SDO_write(&pack))	{}
+    else	{ return -1; }
+
+    pack.index = 0x6099;	pack.subindex = 0x01;	pack.sz = 4;	pack.data = H.SpeedForSwitchSearch;
+    if (!SDO_write(&pack))	{}
+    else	{ return -1; }
+
+    pack.index = 0x6099;	pack.subindex = 0x02;	pack.sz = 4;	pack.data = H.SpeedForZeroSearch;
+    if (!SDO_write(&pack))	{}
+    else	{ return -1; }
+
+    pack.index = 0x609A;	pack.subindex = 0x00;	pack.sz = 4;	pack.data = H.HomingAccel;
+    if (!SDO_write(&pack))	{}
+    else	{ return -1; }
+
+    pack.index = 0x2080;	pack.subindex = 0x00;	pack.sz = 2;	pack.data = H.CurrentThresholdHoming;
+    if (!SDO_write(&pack))	{}
+    else	{ return -1; }
+
+    pack.index = 0x607c;	pack.subindex = 0x00;	pack.sz = 4;	pack.data = H.HomeOffset;
+    if (!SDO_write(&pack))	{}
+    else	{ return -1; }
+
+    pack.index = 0x6098;	pack.subindex = 0x00;	pack.sz = 1;	pack.data = H.HomingMethod;
+    if (!SDO_write(&pack))	{}
+    else	{ return -1; }
+
+    return 0;
+}
+
+int EposCAN::StartHoming()
+{
+    // CKim - Need some status check code.......
+
+    // CKim - Control word for Homing mode
+    // bit 4-7 : 4. Homing Start, 7. Fault Reset (1 indicates fault),
+    // bit 8-11 : 8. Halt
+    // To start homing bit 4 transition from 0 -> 1
+    SDO_data pack;
+
+    pack.nodeid = m_nodeId;	 pack.index = 0x6040;	pack.subindex = 0x00;	pack.sz = 2;	pack.data = 0x000F;
+    if (!SDO_write(&pack))	{}
+    else						{ return -1; }
+
+    pack.nodeid = m_nodeId;	 pack.index = 0x6040;	pack.subindex = 0x00;	pack.sz = 2;	pack.data = 0x001F;
+    if (!SDO_write(&pack))	{ return 0; }
+    else						{ return -1; }
+}
+
+bool EposCAN::IsHomingAttained()
+{
+    if (m_mode != HOMING)		{	return false;		}
+    if (GetStatus() & 0x1000)	// Bit 12 of the status word is 1 when homed
+    {
+        return true;
+    }
+    else
+    {
+        return false;
+    }
+}
+
+// -----------------------------------------
+int EposCAN::GetPositionControlGain(uint16_t& P, uint16_t& I, uint16_t& D)
+{
+    SDO_data pack;
+    pack.nodeid = m_nodeId;	 pack.index = 0x60FB;	pack.subindex = 0x01;
+
+    // returns 0 when successful
+    if (!SDO_read(&pack))	{ P = pack.data; }
+    else	{ return -1; }
+
+    pack.subindex = 0x02;
+    if (!SDO_read(&pack))	{ I = pack.data; }
+    else	{ return -1; }
+
+    pack.subindex = 0x03;
+    if (!SDO_read(&pack))	{ D = pack.data; }
+    else	{ return -1; }
+    return 0;
+}
+
+int EposCAN::SetPositionControlGain(const uint16_t& P, const uint16_t& I, const uint16_t& D)
+{
+    SDO_data pack;
+    pack.nodeid = m_nodeId;	 pack.index = 0x60FB;	pack.sz = 2;
+    // returns 0 when successful
+
+    pack.subindex = 0x01;		pack.data = P;
+    if (!SDO_write(&pack))	{}
+    else	{ return -1; }
+
+    pack.subindex = 0x02;		pack.data = I;
+    if (!SDO_write(&pack))	{}
+    else	{ return -1; }
+
+    pack.subindex = 0x03;		pack.data = D;
+    if (!SDO_write(&pack))	{}
+    else	{ return -1; }
+    return 0;
+}
+
 
 // -----------------------------------------
 

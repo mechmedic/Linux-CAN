@@ -175,7 +175,7 @@ int LinuxSocketCAN::SendSDO(SDO_data* sdo, int rw)
         return -1;
     }
 
-    printf("[SocketCAN] SentSDO Packet. NodeID : 0x%04X  ObjIdx : 0x%04X\n",sendFrame.can_id, sdo->index);
+    //printf("[SocketCAN] SentSDO Packet. NodeID : 0x%04X  ObjIdx : 0x%04X\n",sendFrame.can_id, sdo->index);
     // ------------------------------------------------------------
 
 
@@ -222,14 +222,14 @@ int LinuxSocketCAN::SendSDO(SDO_data* sdo, int rw)
          // CKim - On successful SDO receive
         if(rw == SDO_WRITE)
         {
-            printf("[SocketCAN] Write OK : Device 0x%04X index 0x%04X, 0x%02X. Data 0x%04X\n",
-                sdo->nodeid, sdo->index, sdo->subindex, sdo->data);
+            //printf("[SocketCAN] Write OK : Device 0x%04X index 0x%04X, 0x%02X. Data 0x%04X\n",
+                //sdo->nodeid, sdo->index, sdo->subindex, sdo->data);
         }
         if(rw == SDO_READ)
         {
             memcpy(sdo,&rcvSdo,sizeof(SDO_data));
-            printf("[SocketCAN] Read OK : Device 0x%04X index 0x%04X, 0x%02X. %d byte data is 0x%08X\n",
-                sdo->nodeid, sdo->index, sdo->subindex, sdo->data);
+            //printf("[SocketCAN] Read OK : Device 0x%04X index 0x%04X, 0x%02X. %d byte data is 0x%08X\n",
+                //sdo->nodeid, sdo->index, sdo->subindex, sdo->sz, sdo->data);
         }
         return 0;
     }
