@@ -107,6 +107,11 @@ public:
     int SendRxPDO(int COBID, int sz, char* buff);
 
     /**
+     * @brief  Read TxPDO Object
+     */
+    int ReadTxPDO(int& nodeID, int& PdoId, char* buff);
+
+    /**
      * @brief  Get Error message
      */
     void GetError(std::string& msg) {   msg = m_errMsg; }

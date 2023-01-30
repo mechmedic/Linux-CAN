@@ -33,64 +33,14 @@
 
 #define NUM_NODE 1
 
+#include <canslave.h>
+
 // CKim - In linux, instead of Event, I'm using semaphore. So include following headers.
-#include <pthread.h>
-#include <semaphore.h>
+//#include <pthread.h>
+//#include <semaphore.h>
 #include <time.h>
 #include <thread>
-
-// CKim - This is EPOS2 Operation mode
-enum OP_MODE {
-    HOMING = 6,         // EPOS2,4 common
-    PROFILE_VEL = 3,    // EPOS2,4 common
-    PROFILE_POS = 1,    // EPOS2,4 common
-
-    POSITION = -1,      // EPOS2 only
-    VELOCITY = -2,      // EPOS2 only
-    CURRENT = -3,       // EPOS2 only
-
-    SYNC_POS = 8,       // Cyclic Synchronous Position Mode (EPOS4, corresponds to POSITION of EPOS2)
-    SYNC_VEL = 9,       // Cyclic Synchronous Velocity Mode (EPOS4, corresponds to VELOCITY)
-    SYNC_TRQ = 10       // Cyclic Synchronous Torque Mode (EPOS4, corresponds to CURRENT)
-};
-
-
-// CKim - Homing parameters
-typedef struct
-{
-	uint32_t	MaxFollowingError;		// 6065 0
-	uint32_t	MaxProfileVelocity;		// 607F 0
-	uint32_t	QuickStopDecel;			// 6085 0
-	uint32_t	SpeedForSwitchSearch;	// 6099 01
-	uint32_t	SpeedForZeroSearch;		// 6099 02
-	uint32_t	HomingAccel;			// 609A 0
-	uint16_t	CurrentThresholdHoming;	// 2080		// Used when homing by touching mechanical limit and sensing current
-	int32_t		HomeOffset;				// 607c		// Amount to move away from the sensed limit
-	int8_t		HomingMethod;			// 6098
-} HomingParam;
-
-// CKim - Profile Position parameters
-typedef struct
-{
-	uint32_t	MaxFollowingError;		// 6065 0
-	uint32_t	MaxProfileVelocity;		// 607F 0
-	uint32_t	QuickStopDecel;			// 6085 0
-	uint32_t	ProfileVelocity;		// 6081 0
-	uint32_t	ProfileAccel;			// 6083 0
-	uint32_t	ProfileDecel;			// 6084 0
-    uint16_t    MotionProfileType;      // 6086 0       // Always set to 0 (linear ramp) in EPOS4
-} ProfilePosParam;
-
-// CKim - Profile Velocity parameters
-typedef struct
-{
-    uint32_t	MaxProfileVelocity;		// 607F 0
-    uint32_t	QuickStopDecel;			// 6085 0
-    uint32_t	ProfileAccel;			// 6083 0
-    uint32_t	ProfileDecel;			// 6084 0
-    uint16_t    MotionProfileType;      // 6086 0
-} ProfileVelParam;
-
+#include <memory>
 
 // CKim - Class Encapsulating CAN interface of the Maxon EPOS2
 class EposCAN
@@ -113,13 +63,16 @@ private:
     // CKim - Mode of the EPOS controller (profile position, homing, velocity ...)
 	int			m_mode;
 
+    // CKim - Slaves
+    CANSlave    m_Slave[NUM_NODE];
+
     // CKim - PDO Specific.....
     char        m_TxPdoData[32];    // CKim - Store data from TxPDO1-4
 	uint16_t	m_statusWord;
     uint16_t	m_prevStatusWord;
 	uint32_t	m_Position;
 
-    sem_t       m_MotionSema;
+    //sem_t       m_MotionSema;
 
 public:
     EposCAN();
@@ -193,39 +146,31 @@ public:
     int WaitForMotionCompletionAll(long timeoutmsec);
 
     // -------------------------------------------
-
-    // -------------------------------------------
     // CKim - Get/Set Velocity Profile Motion Parameter
     int GetVelocityProfileParam(int nodeId, ProfileVelParam& P);
     int SetVelocityProfileParam(int nodeId, const ProfileVelParam& P);
 
     // CKim - Move in target velocity. Unit is in rpm
     int MoveVelProfile(int nodeId, int32_t vel);
-    // -------------------------------------------
 
     // -------------------------------------------
     // CKim - Enable/Disable PDO by sending NMT message
     int EnablePDO(int nodeId);
     int DisablePDO(int nodeId);
 
-    // CKim - Hack this function to change Transmit PDO 1-4 of the device.
-    // This configures TxPDO and sets the mapping of the 8 bytes of data that is transmitted from EPOS to PC
-    // Also hack CAN_ReadThread to decode the TxPDO accordingly
-    int ConfigureTxPDO();
+    // CKim - Write configured PDOs to slaves.
+    int WriteTxPdoSettings(int nodeId);
+    int WriteRxPdoSettings(int nodeId);
 
-    // CKim - Hack this function to change Receive PDO 1-4 of the device.
-    // This configures RxPDO and sets the mapping of the 8 bytes of data that EPOS receives from PC
-    int ConfigureRxPDO();
+    // CKim - Hack these two functions to change parameters and mappings of PDO 1-4 of the device.
+    // This configures PDO parameters and data mapping of the EPOS
+    // TxPDO is from EPOS to PC. RxPDO is from PC to EPOS. Both 8 bytes
+    int ConfigureTxPDOs(int nodeId);
+    int ConfigureRxPDOs(int nodeId);
 
-//    // CKim - Set Transmit PDO Mapping - This configures n th TxPDO of nodeID,
-//    int SetTxPDOMapping(int n);
-
-//    // CKim - Set Transmit PDO Mapping - This configures n th TxPDO of nodeID,
-//    int SetRxPDOMapping(int n);
-
-    int NotifyPDO(int n, const char* buf);
-    // -------------------------------------------
-
+    // CKim - Hack these two functions to map device data to PDO data
+    int SendRxPDOdata(int nodeId);
+    int ReadTxPDOdata();
 
     // -------------------------------------------
     // CKim - Get/Set Homing parameters
@@ -247,11 +192,11 @@ public:
     // -------------------------------------------
     // CKim - Move in Position Profile Mode. Motion starts immediately
 
-    int MovePosProfileUsingPDO(int32_t pos, bool rel);
+    //int MovePosProfileUsingPDO(int32_t pos, bool rel);
 
     // CKim - Get current position
-    int GetPosition(int32_t& pos);
-    int GetPositionUsingPDO(int32_t& pos);
+    //int GetPosition(int32_t& pos);
+    //int GetPositionUsingPDO(int32_t& pos);
     // -------------------------------------------
 
 private:
@@ -260,10 +205,25 @@ private:
     int SDO_write(SDO_data* d)  {   return m_CANport.SendSDO(d,SDO_WRITE);    };
     int SDO_read(SDO_data* d)   {   return m_CANport.SendSDO(d,SDO_READ);    };
 
+    // CKim - Start PDO communication
+    void StartPdoExchange();
+    void StopPdoExchange();
+
     // CKim - PDO Exchange functions running in separate thread
-    static void* PDOExchageThread(void* pData);
+    static void* PDOReadThread(void* pData);
+
+    // CKim - PDO Exchange functions running in separate thread
+    static void* PDOSendThread(void* pData);
 
 
+    std::shared_ptr<std::thread> pthrSend;
+    std::shared_ptr<std::thread> pthrRead;
+
+    char* m_RxPDOsendBuff[NUM_NODE];
+    //char* m_TxPDOreadBuff[NUM_NODE];
+
+    bool sendFlag;
+    bool readFlag;
 };
 
 #endif

@@ -101,11 +101,9 @@ int LinuxSocketCAN::SendNMT(int state, int nodeId)
     // CKim - Switch slave to 'Operational' state.
     // COB-ID = 0, data[0] = 0x01, data[1] = nodeId, (0 for all)
     // NMT operational state is indicated by bit 9 of the status word.
-    uint16_t cobIDforNMT = 0;       // COB-ID for NMT message
-
     struct can_frame frame;         int nbytes;
 
-    frame.can_id = cobIDforNMT;
+    frame.can_id = COBID_NMT;
     frame.can_dlc = 2;
     frame.data[0] = state;
     frame.data[1] = nodeId;
@@ -161,7 +159,7 @@ int LinuxSocketCAN::SendSDO(SDO_data* sdo, int rw)
         return -1;
     }
 
-    sendFrame.can_id = SDO_RX + sdo->nodeid;
+    sendFrame.can_id = COBID_SDO_RX + sdo->nodeid;
     sendFrame.data[1] = (0xFF & (sdo->index));				// Byte 1 : Low byte of the index
     sendFrame.data[2] = (sdo->index) >> 8;					// Byte 2 : High byte of the index
     sendFrame.data[3] = sdo->subindex;						// Byte 3 : Subindex
@@ -246,7 +244,7 @@ int LinuxSocketCAN::FrameToSdo(const struct can_frame& frame, SDO_data* sdo)
 
     // CKim - Classify the object based on Command Object ID (COB-ID)
     // Return if the received frame is not SDO frame
-    if ((id & SDO_TX) != SDO_TX)
+    if ((id & COBID_SDO_TX) != COBID_SDO_TX)
     {
         printf("[SocketCAN] Unknown COB-ID 0x%04X  ", id);
         for (int i = 0; i < len; i++)	{
@@ -256,7 +254,7 @@ int LinuxSocketCAN::FrameToSdo(const struct can_frame& frame, SDO_data* sdo)
     }
 
     // CKim - Parse node id
-    id = id - SDO_TX;
+    id = id - COBID_SDO_TX;
     sdo->nodeid = id;
 
     // CKim - Parse object index and sub index
@@ -317,12 +315,50 @@ int LinuxSocketCAN::SendRxPDO(int COBID, int sz, char* buff)
     // CKim - Use write() on socket to send CAN data
     nbytes = write(m_hd, &frame, sizeof(frame));
     if (nbytes != sizeof(frame)) {
-        perror("write");
+        m_errMsg = "[SocketCAN] RxPDO send error\n";
+        std::cerr << m_errMsg;
+        return -1;
+    }
+    printf("[SocketCAN] Sent RxPDO Packet. COB-ID : 0x%04X\n",COBID);
+    return 0;
+}
+
+int LinuxSocketCAN::ReadTxPDO(int& nodeId, int& PdoId, char* buff)
+{
+    struct can_frame frame;         int nbytes;
+
+    // CKim - Read CAN frame. SocketCAN uses 'read' functions
+    nbytes = read(m_hd,&frame,sizeof(struct can_frame));
+
+    if (nbytes < 0) {
+        m_errMsg = "[SocketCAN] TxPDO read error\n";
+        std::cerr << m_errMsg;
         return -1;
     }
 
-    printf("Sent RxPDO\n");
-    return 0;
+    /* paranoid check ... */
+    if (nbytes < sizeof(struct can_frame)) {
+        m_errMsg = "[SocketCAN] TxPDO read incomplete CAN frame\n";
+        std::cerr << m_errMsg;
+        return -1;
+    }
+
+    long id;
+
+    id = frame.can_id;
+    for(int i=0; i<8; i++)   {   buff[i] = frame.data[i];     }
+
+
+    PdoId = (id & COBID_TXPDO1);
+    if(PdoId == COBID_TXPDO1)       {   nodeId = id - COBID_TXPDO1;     return 0;   }
+    else if(PdoId == COBID_TXPDO2)  {   nodeId = id - COBID_TXPDO2;     return 0;   }
+    else if(PdoId == COBID_TXPDO3)  {   nodeId = id - COBID_TXPDO3;     return 0;   }
+    else if(PdoId == COBID_TXPDO4)  {   nodeId = id - COBID_TXPDO4;     return 0;   }
+    else {
+        m_errMsg = "[SocketCAN] TxPDO read invalid COB-ID\n";
+        std::cerr << m_errMsg;
+        return -1;
+    }
 }
 
 

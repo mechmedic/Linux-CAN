@@ -2,24 +2,32 @@
 #include <string.h>
 #include "EposCAN.h"
 
-
-
 // CKim - Static Variable initialization
-//EposCAN* EposCAN::m_pDev[10] = { 0 };
 canInterface EposCAN::m_CANport;
 
 EposCAN::EposCAN()
 {
+    for(int i=0; i<NUM_NODE; i++)
+    {
+        m_Slave[i].m_nodeId = i;
+
+        // CKim - Allocate Buffer for RxPDO communication
+        m_RxPDOsendBuff[i] = new char[8*4];     // 8 byte 4 PDOS
+//        m_TxPDOreadBuff[i] = new char[8*4];     // 8 byte 4 PDOS
+    }
     //m_nodeId = n;
-    //    // ---------------------------------------------------------------
-    //    // CKim - Launch CAN Read Thread
-    //    pthread_create(&m_hReadThrd, NULL, LinuxSocketCAN::CAN_ReadThread, 0);
-    //    // ---------------------------------------------------------------
 }
 
 EposCAN::~EposCAN()
 {
+    sendFlag = readFlag = false;
+    pthrRead->join();
+    pthrSend->join();
 
+    for(int i=0; i<NUM_NODE; i++)  {
+        delete m_RxPDOsendBuff[i];
+        //delete m_TxPDOreadBuff[i];
+    }
 }
 
 int EposCAN::EnableDevice(int nodeId)
@@ -443,331 +451,296 @@ int EposCAN::DisablePDO(int nodeId)
     m_CANport.SendNMT(NMT_PREOPERATIONAL, nodeId);
 }
 
-// CKim - TxPDO is from EPOS to PC
-int EposCAN::ConfigureTxPDO()
+int EposCAN::WriteTxPdoSettings(int nodeId)
 {
-	SDO_data pack;		pack.nodeid = m_nodeId;
+    SDO_data pack;		pack.nodeid = nodeId;
 
-	// CKim - Changes to PDO mapping is only possible in Preoperational mode
-
-	// CKim - My Configuration is
-	// TxPDO1 : 16 bit 'Status word' (0x6041 Sub 00), Transmit on change
-    // TxPDO2 : 32 bit 'Position Actual Value' (0x6064 Sub 00), Transmit on RTR
-	// TxPDO3 : None
-	// TxPDO4 : None
-
-	for (int n = 1; n < 4; n++)
+    // CKim - Write TxPDO parameters
+    for (int n = 0; n < 4; n++)
 	{
-		int cobId;
+        // CKim - 1. Configure TxPDO settings. Item 0x1800~03
+        pack.index = OD_TPDO1_PARAM + n;    // 0x1800 + n;
 
-		// CKim - TxPOD1
-		if (n == 1)
-		{
-			// CKim - 1. Configure TxPDO settings. Item 0x1800~03
-			pack.index = 0x1800 + (n - 1);
+        // SubIndex 0x01 (uint_32) : Communication Object ID (COB-ID)
+        pack.subindex = 0x01;		pack.sz = 4;		pack.data = m_Slave[nodeId].TpdoParam[n].COB_ID;
+        if (!SDO_write(&pack))	{ }
+        else					{ return -1; }
 
-			// SubIndex 0x01 (uint_32) : Communication Object ID (COB-ID)
-			pack.subindex = 0x01;		pack.sz = 4;		pack.data = TX_PDO1 + m_nodeId;
-			if (!SDO_write(&pack))	{ cobId = pack.data; }
-			else					{ return -1; }
+        // SubIndex 0x02 (uint_8) : Transmission type.
+        pack.subindex = 0x02;       pack.sz = 1;	pack.data = m_Slave[nodeId].TpdoParam[n].TransmissionType;   //pack.data = 255;
+        if (!SDO_write(&pack))	{}
+        else					{ return -1; }
 
-			// SubIndex 0x02 (uint_8) : Transmission type. Transmit on  1. Sync, 253. asynch transmission by RTR, 255. asynch transmission by Change
-			pack.subindex = 0x02;	pack.sz = 1;	pack.data = 255;
-			if (!SDO_write(&pack))	{}
-			else					{ return -1; }
-
-			// SubIndex 03 (uint_16) : Inhibit time. Minimum interval between event trriggered PDO transmission. 
-			// Use only when SubIndex 02 is 255 (transmit on change)
-            pack.subindex = 0x03;	pack.sz = 2;	pack.data = 10;//1000;	// multiples of 100us = 100 ms.
-			if (!SDO_write(&pack))	{}
-			else					{ return -1; }
-
-			// CKim - 2. Configure TxPDO Map. Item 0x1A00~03
-			pack.index = 0x1A00 + (n - 1);
-
-			// Disable PDO by setting number of objects mapped Index 0x1A00~03 Sub 0x00 uint_8, to zero
-			pack.subindex = 0x00;	pack.sz = 1;	pack.data = 0;
-			if (!SDO_write(&pack))	{}
-			else					{ return -1; }
-
-			// Write 4 byte info of the nth object (Sub 0x0n) that will be transmitted by PDO.
-			// 4 byte = Object Index (2byte) + SubIndex (1byte) + Size (1byte) = (uint_32)
-			// Size in bits (0x08, 0x10, 0x20)
-			pack.subindex = 0x01;	pack.sz = 4;
-			pack.data = 0x60410010; // (0x6041 sub 00 : Status word, size is 0x10 16 bit . )
-			if (!SDO_write(&pack))	{}
-			else					{ return -1; }
-
-			// Enable PDO by setting number of objects mapped to nonzero
-            pack.subindex = 0x00;	pack.sz = 1;	pack.data = 1;  // CKim changed to 0 from 1
-			if (!SDO_write(&pack))	{}
-			else					{ return -1; }
-		}
-		if (n == 2)
-		{
-			// CKim - 1. Configure TxPDO settings. Item 0x1800~03
-			pack.index = 0x1800 + (n - 1);
-
-			// SubIndex 0x01 (uint_32) : Communication Object ID (COB-ID)
-			pack.subindex = 0x01;		pack.sz = 4;		pack.data = TX_PDO2 + m_nodeId;
-			if (!SDO_write(&pack))	{ cobId = pack.data; }
-			else					{ return -1; }
-
-			// SubIndex 0x02 (uint_8) : Transmission type. Transmit on  1. Sync, 253. asynch transmission by RTR, 255. asynch transmission by Change
-            pack.subindex = 0x02;	pack.sz = 1;	pack.data = 253;//1;
-			if (!SDO_write(&pack))	{}
-			else					{ return -1; }
-
-			// SubIndex 03 (uint_16) : Inhibit time. Minimum interval between event trriggered PDO transmission. 
-			// Use only when SubIndex 02 is 255 (transmit on change)
-			pack.subindex = 0x03;	pack.sz = 2;	pack.data = 1000;	// multiples of 100us = 100 ms. 
-			if (!SDO_write(&pack))	{}
-			else					{ return -1; }
-
-			// CKim - 2. Configure TxPDO Map. Item 0x1A00~03
-			pack.index = 0x1A00 + (n - 1);
-
-			// Disable PDO by setting number of objects mapped Index 0x1A00~03 Sub 0x00 uint_8, to zero
-			pack.subindex = 0x00;	pack.sz = 1;	pack.data = 0;
-			if (!SDO_write(&pack))	{}
-			else					{ return -1; }
-
-			// Write 4 byte info of the nth object (Sub 0x0n) that will be transmitted by PDO.
-			// 4 byte = Object Index (2byte) + SubIndex (1byte) + Size (1byte) = (uint_32)
-			// Size in bits (0x08, 0x10, 0x20)
-			pack.subindex = 0x01;	pack.sz = 4;
-			pack.data = 0x60640020; // (0x6064 sub 00 : Position actual value, size is 0x20 32 bit . )
-			if (!SDO_write(&pack))	{}
-			else					{ return -1; }
-
-			// Enable PDO by setting number of objects mapped to nonzero
-            pack.subindex = 0x00;	pack.sz = 1;	pack.data = 1;      // CKim changed to 0 from 1
-			if (!SDO_write(&pack))	{}
-			else					{ return -1; }
-		}
-		//if (n == 3) { pack.data = TX_PDO3 + m_nodeId; }
-		//if (n == 4) { pack.data = TX_PDO4 + m_nodeId; }
-	}
-
-	return 0;//	return cobId;
-
-}
-
-// CKim - RxPDO is from PC to EPOS
-int EposCAN::ConfigureRxPDO()
-{
-    SDO_data pack;		pack.nodeid = m_nodeId;
-
-    // CKim - Changes to PDO mapping is only possible in Preoperational mode
-
-    // CKim - My Configuration is
-    // RxPDO1 : 16 bit 'ControlWord' (0x6040 Sub 00), Apply Immediately
-    // RxPDO2 : 32 bit 'Target Position' (0x607A Sub 00), Apply Immediately
-    // RxPDO3 : None
-    // RxPDO4 : None
-
-    for (int n = 1; n < 4; n++)
-    {
-        int cobId;
-
-        // CKim - RxPOD1
-        if (n == 1)
-        {
-            // CKim - 1. Configure RxPDO settings. Item 0x1400~03
-            pack.index = 0x1400 + (n - 1);
-
-            // SubIndex 0x01 (uint_32) : Communication Object ID (COB-ID)
-            pack.subindex = 0x01;		pack.sz = 4;		pack.data = RX_PDO1 + m_nodeId;
-            if (!SDO_write(&pack))	{ cobId = pack.data; }
-            else					{ return -1; }
-
-            // SubIndex 0x02 (uint_8) : Transmission type. Received data applied to node 1. on Sync, 255. Immediatey
-            pack.subindex = 0x02;	pack.sz = 1;	pack.data = 255;
-            if (!SDO_write(&pack))	{}
-            else					{ return -1; }
-
-            // CKim - 2. Configure RxPDO Map. Item 0x1600~03
-            pack.index = 0x1600 + (n - 1);
-
-            // Disable PDO by setting number of objects mapped Index 0x1600~03 Sub 0x00 uint_8, to zero
-            pack.subindex = 0x00;	pack.sz = 1;	pack.data = 0;
-            if (!SDO_write(&pack))	{}
-            else					{ return -1; }
-
-            // Write 4 byte info of the nth object (Sub 0x0n) that will be transmitted by PDO.
-            // 4 byte = Object Index (2byte) + SubIndex (1byte) + Size (1byte) = (uint_32)
-            // Size in bits (0x08, 0x10, 0x20)
-            pack.subindex = 0x01;	pack.sz = 4;
-            pack.data = 0x60400010; // (0x6040 sub 00 : Control word, size is 0x10 16 bit . )
-            if (!SDO_write(&pack))	{}
-            else					{ return -1; }
-
-            // Enable PDO by setting number of objects mapped to nonzero
-            pack.subindex = 0x00;	pack.sz = 1;	pack.data = 1;
-            if (!SDO_write(&pack))	{}
-            else					{ return -1; }
-        }
-        if (n == 2)
-        {
-            // CKim - 1. Configure RxPDO settings. Item 0x1400~03
-            pack.index = 0x1400 + (n - 1);
-
-            // SubIndex 0x01 (uint_32) : Communication Object ID (COB-ID)
-            pack.subindex = 0x01;		pack.sz = 4;		pack.data = RX_PDO2 + m_nodeId;
-            if (!SDO_write(&pack))	{ cobId = pack.data; }
-            else					{ return -1; }
-
-            // SubIndex 0x02 (uint_8) : Transmission type. Received data applied to node 1. on Sync, 255. Immediatey
-            pack.subindex = 0x02;	pack.sz = 1;	pack.data = 255;
-            if (!SDO_write(&pack))	{}
-            else					{ return -1; }
-
-            // CKim - 2. Configure RxPDO Map. Item 0x1600~03
-            pack.index = 0x1600 + (n - 1);
-
-            // Disable PDO by setting number of objects mapped Index 0x1600~03 Sub 0x00 uint_8, to zero
-            pack.subindex = 0x00;	pack.sz = 1;	pack.data = 0;
-            if (!SDO_write(&pack))	{}
-            else					{ return -1; }
-
-            // Write 4 byte info of the nth object (Sub 0x0n) that will be transmitted by PDO.
-            // 4 byte = Object Index (2byte) + SubIndex (1byte) + Size (1byte) = (uint_32)
-            // Size in bits (0x08, 0x10, 0x20)
-            pack.subindex = 0x01;	pack.sz = 4;
-            pack.data = 0x607A0020; // (0x607A sub 00 : Targetposition, size is 0x20 32 bit
-            if (!SDO_write(&pack))	{}
-            else					{ return -1; }
-
-            // Enable PDO by setting number of objects mapped to nonzero
-            pack.subindex = 0x00;	pack.sz = 1;	pack.data = 1;
-            if (!SDO_write(&pack))	{}
-            else					{ return -1; }
-        }
-        //if (n == 3) { pack.data = TX_PDO3 + m_nodeId; }
-        //if (n == 4) { pack.data = TX_PDO4 + m_nodeId; }
+        // SubIndex 03 (uint_16) : Inhibit time.
+        pack.subindex = 0x03;	pack.sz = 2;	pack.data = m_Slave[nodeId].TpdoParam[n].InhibitTime;//10;//1000;	// multiples of 100us = 100 ms.
+        if (!SDO_write(&pack))	{}
+        else					{ return -1; }
     }
 
+    // CKim - Write TxPDO mappings
+    for (int n = 0; n < 4; n++)
+    {
+        // CKim - 2. Configure TxPDO Map. Item 0x1A00~03
+        pack.index = OD_TPDO1_MAP + n;
+
+        // Disable PDO by setting number of objects mapped Index 0x1A00~03 Sub 0x00 uint_8, to zero
+        pack.subindex = 0x00;	pack.sz = 1;	pack.data = 0;
+        if (!SDO_write(&pack))	{}
+        else					{ return -1; }
+
+        for(int i=0; i<m_Slave[nodeId].TpdoMap[n].NumberOfMappedObject; i++)
+        {
+            // Write 4 byte info of the nth object (Sub 0x0n) that will be transmitted by PDO.
+            // 4 byte = Object Index (2byte) + SubIndex (1byte) + Size (1byte) = (uint_32)
+            // Size in bits (0x08, 0x10, 0x20)
+            pack.subindex = 0x01 + i;       pack.sz = 4;
+            uint16_t idx = m_Slave[nodeId].TpdoMap[n].ObjIdx[i];
+            uint8_t subidx = m_Slave[nodeId].TpdoMap[n].ObjSubIdx[i];
+            uint8_t sz = m_Slave[nodeId].TpdoMap[n].ObjSz[i];
+            pack.data = (idx << 16) + (subidx << 8) + sz;
+            //pack.data = m_Slave[nodeId].TpdoMap[n]0x60410010; // (0x6041 sub 00 : Status word, size is 0x10 16 bit . )
+            if (!SDO_write(&pack))	{}
+            else					{ return -1; }
+        }
+
+        // Enable PDO by setting number of objects mapped to nonzero
+        pack.subindex = 0x00;	pack.sz = 1;	pack.data = m_Slave[nodeId].TpdoMap[n].NumberOfMappedObject;  // CKim changed to 0 from 1
+        if (!SDO_write(&pack))	{}
+        else					{ return -1; }
+    }
+	return 0;//	return cobId;
+}
+
+int EposCAN::WriteRxPdoSettings(int nodeId)
+{
+    SDO_data pack;		pack.nodeid = nodeId;
+
+    // CKim - Write RxPDO parameters
+    for (int n = 0; n < 4; n++)
+    {
+        // CKim - 1. Configure RxPDO settings. Item 0x1400~03
+        pack.index = OD_RPDO1_PARAM + n;    //0x1400 + n
+
+        // SubIndex 0x01 (uint_32) : Communication Object ID (COB-ID)
+        pack.subindex = 0x01;		pack.sz = 4;		pack.data = m_Slave[nodeId].RpdoParam[n].COB_ID;
+        if (!SDO_write(&pack))	{ }
+        else					{ return -1; }
+
+        // SubIndex 0x02 (uint_8) : Transmission type.
+        pack.subindex = 0x02;       pack.sz = 1;	pack.data = m_Slave[nodeId].RpdoParam[n].TransmissionType;   //pack.data = 255;
+        if (!SDO_write(&pack))	{}
+        else					{ return -1; }
+    }
+
+    // CKim - Write RxPDO mappings
+    for (int n = 0; n < 4; n++)
+    {
+        // CKim - 2. Configure TxPDO Map. Item 0x1600~03
+        pack.index = OD_RPDO1_MAP + n;  // 0x1600 + n
+
+        // Disable PDO by setting number of objects mapped Index 0x1600~03 Sub 0x00 uint_8, to zero
+        pack.subindex = 0x00;	pack.sz = 1;	pack.data = 0;
+        if (!SDO_write(&pack))	{}
+        else					{ return -1; }
+
+        for(int i=0; i<m_Slave[nodeId].RpdoMap[n].NumberOfMappedObject; i++)
+        {
+            // Write 4 byte info of the nth object (Sub 0x0n) that will be transmitted by PDO.
+            // 4 byte = Object Index (2byte) + SubIndex (1byte) + Size (1byte) = (uint_32)
+            // Size in bits (0x08, 0x10, 0x20)
+            pack.subindex = 0x01 + i;       pack.sz = 4;
+            uint16_t idx = m_Slave[nodeId].RpdoMap[n].ObjIdx[i];
+            uint8_t subidx = m_Slave[nodeId].RpdoMap[n].ObjSubIdx[i];
+            uint8_t sz = m_Slave[nodeId].RpdoMap[n].ObjSz[i];
+            pack.data = (idx << 16) + (subidx << 8) + sz;
+            //pack.data = m_Slave[nodeId].TpdoMap[n]0x60410010; // (0x6041 sub 00 : Status word, size is 0x10 16 bit . )
+            if (!SDO_write(&pack))	{}
+            else					{ return -1; }
+        }
+
+        // Enable PDO by setting number of objects mapped to nonzero
+        pack.subindex = 0x00;	pack.sz = 1;	pack.data = m_Slave[nodeId].RpdoMap[n].NumberOfMappedObject;  // CKim changed to 0 from 1
+        if (!SDO_write(&pack))	{}
+        else					{ return -1; }
+    }
     return 0;//	return cobId;
 }
 
-int EposCAN::NotifyPDO(int n, const char* buff)
+int EposCAN::ConfigureTxPDOs(int nodeId)
 {
-    memcpy(m_TxPdoData+(8*n),buff,8);
+    // CKim - Edit the code here to change TxPDO configurations and mappings.
+    // Call this function and then WriteTxPdoSettings() to change PDO mappings
+    // Changes to PDO mapping is only possible in Preoperational mode
 
-    // ------------------------------------------------------
-    // CKim - TxPDO1 is configured to be 16 bit status word
-    if(n==0)
+    // CKim - TxPDO1. 16 bit 'Status word' (0x6041 Sub 00), Transmit on change (255) within 1 ms.
+    m_Slave[nodeId].TpdoParam[0].COB_ID = COBID_TXPDO1 + nodeId;
+    m_Slave[nodeId].TpdoParam[0].TransmissionType = TXPDO_TRANSMIT_ON_CHANGE;
+    m_Slave[nodeId].TpdoParam[0].InhibitTime = 10;  // multiples of 100us = 1 ms..TransmissionType = 255;
+
+    m_Slave[nodeId].TpdoMap[0].NumberOfMappedObject = 1;
+    m_Slave[nodeId].TpdoMap[0].ObjIdx[0] = OD_STATUS_WORD;
+    m_Slave[nodeId].TpdoMap[0].ObjSubIdx[0] = 0;
+    m_Slave[nodeId].TpdoMap[0].ObjSz[0] = 0x10;    // 16 bits
+
+    // CKim - TxPDO2. 32 bit 'Position Actual Value' (0x6064 Sub 00) and
+    // 32 bit 'Velocity Actual Value' (0x606C Sub 00) Transmit on SYNC
+    m_Slave[nodeId].TpdoParam[1].COB_ID = COBID_TXPDO2 + nodeId;
+    m_Slave[nodeId].TpdoParam[1].TransmissionType = TXPDO_TRANSMIT_ON_SYNC;
+    m_Slave[nodeId].TpdoParam[1].InhibitTime = 10;  // multiples of 100us = 1 ms..TransmissionType = 255;
+
+    m_Slave[nodeId].TpdoMap[1].NumberOfMappedObject = 2;
+    m_Slave[nodeId].TpdoMap[1].ObjIdx[0] = OD_POSITION_ACTUAL_VAL;
+    m_Slave[nodeId].TpdoMap[1].ObjSubIdx[0] = 0;
+    m_Slave[nodeId].TpdoMap[1].ObjSz[0] = 0x20;    // 32 bits
+
+    m_Slave[nodeId].TpdoMap[1].ObjIdx[1] = OD_VELOCITY_ACTUAL_VAL;
+    m_Slave[nodeId].TpdoMap[1].ObjSubIdx[1] = 0;
+    m_Slave[nodeId].TpdoMap[1].ObjSz[1] = 0x20;    // 32 bits
+
+    // CKim - Nothing for TxPDO3 and 4. Set # of mapped object to 0
+    m_Slave[nodeId].TpdoParam[2].COB_ID = COBID_TXPDO3 + nodeId;
+    m_Slave[nodeId].TpdoMap[2].NumberOfMappedObject = 0;
+    m_Slave[nodeId].TpdoParam[3].COB_ID = COBID_TXPDO4 + nodeId;
+    m_Slave[nodeId].TpdoMap[3].NumberOfMappedObject = 0;
+
+    return 0;
+}
+
+int EposCAN::ConfigureRxPDOs(int nodeId)
+{
+    // CKim - Edit the code here to change RxPDO configurations and mappings.
+    // Call this function and then WriteRxPdoSettings() to change PDO mappings
+    // Changes to PDO mapping is only possible in Preoperational mode
+
+    // CKim - RxPDO1 : 16 bit 'ControlWord' (0x6040 Sub 00), Apply Immediately
+    m_Slave[nodeId].RpdoParam[0].COB_ID = COBID_RXPDO1 + nodeId;
+    m_Slave[nodeId].RpdoParam[0].TransmissionType = RXPDO_UPDATE_IMMED;
+
+    m_Slave[nodeId].RpdoMap[0].NumberOfMappedObject = 1;
+    m_Slave[nodeId].RpdoMap[0].ObjIdx[0] = OD_CONTROL_WORD;
+    m_Slave[nodeId].RpdoMap[0].ObjSubIdx[0] = 0;
+    m_Slave[nodeId].RpdoMap[0].ObjSz[0] = 0x10;    // 16 bits
+
+
+    // CKim - RxPDO2 : 32 bit 'Target Position' (0x607A Sub 00), Update on SYNC
+    m_Slave[nodeId].RpdoParam[1].COB_ID = COBID_RXPDO2 + nodeId;
+    m_Slave[nodeId].RpdoParam[1].TransmissionType = RXPDO_UPDATE_ON_SYNC;
+
+    m_Slave[nodeId].RpdoMap[1].NumberOfMappedObject = 1;
+    m_Slave[nodeId].RpdoMap[1].ObjIdx[0] = OD_TARGET_POSITION;
+    m_Slave[nodeId].RpdoMap[1].ObjSubIdx[0] = 0;
+    m_Slave[nodeId].RpdoMap[1].ObjSz[0] = 0x20;    // 32 bits
+
+    // CKim - Nothing for RxPDO3 and 4. Set # of mapped object to 0
+    m_Slave[nodeId].RpdoParam[2].COB_ID = COBID_RXPDO3 + nodeId;
+    m_Slave[nodeId].RpdoMap[2].NumberOfMappedObject = 0;
+    m_Slave[nodeId].RpdoParam[3].COB_ID = COBID_RXPDO4 + nodeId;
+    m_Slave[nodeId].RpdoMap[3].NumberOfMappedObject = 0;
+
+    return 0;
+}
+
+int EposCAN::SendRxPDOdata(int nodeId)
+{
+    uint16_t cobId;  char* buff;     int err;
+
+    // CKim - Copy data to m_RxPDOsendBuff
+    // RxPDO1 : control word (2 byte) to buffer 8*0
+    memcpy(m_RxPDOsendBuff[nodeId],&m_Slave[nodeId].data_.control_word,2);
+    // RxPDO2 : target position (4 byte) to 8*1 + 0 bytes;
+    memcpy(m_RxPDOsendBuff[nodeId]+8,&m_Slave[nodeId].data_.target_pos,4);
+
+    // CKim - Send RxPDO1 to 4
+    for(int n=0; n<4; n++)
     {
-        uint16_t status;	char* tmp = (char*)&status;
-        for (int i = 0; i < 2; i++)	{ *(tmp + i) = buff[i]; }
-        m_statusWord = status;
-
-        // CKim - Notify motion complete. In profile position mode, bit [0-15] of the statusword
-        // bit 12 and bit 10 is both 1;
-        if((status & 0x1400) == 0x1400)
+        cobId = COBID_RXPDO1 + (0x00000100*n) + nodeId;
+        buff = m_RxPDOsendBuff[nodeId]+(8*n);
+        for(int i=0; i<m_Slave[nodeId].RpdoMap[n].NumberOfMappedObject; i++)
         {
-            sem_post(&m_MotionSema);
+            err = m_CANport.SendRxPDO(cobId, m_Slave[nodeId].RpdoMap[n].ObjSz[i], buff);
+            buff = m_RxPDOsendBuff[nodeId]+m_Slave[nodeId].RpdoMap[n].ObjSz[i];
         }
     }
-    // ------------------------------------------------------
-
-//    // ------------------------------------------------------
-//    // CKim - TxPDO2 is configured to be 32 bit Position actual value
-//    uint32_t pos;       char* tmp = (char*)&pos;
-//    for (int i = 0; i < 4; i++)	{ *(tmp + i) = buf[i]; }
-
-//    // CKim - Copy to member variable - may need mutex here
-//    if (m_pDev[nodeId - 1])
-//    {
-//        m_pDev[nodeId - 1]->m_Position = pos;
-//        SetEvent(m_hPDO_Event);
-//    }
-//    // ------------------------------------------------------
 }
 
-void* EposCAN::PDOExchageThread(void* pData)
+int EposCAN::ReadTxPDOdata()
 {
-    //    // CKim - Handle to the class is passed as a parameter to thread function.
-    //    //LinuxSocketCAN* ptr = (LinuxSocketCAN*) pData;
+    int nodeId, pdoid;      int err;    char* buff;
+    err = m_CANport.ReadTxPDO(nodeId,pdoid,buff);
 
-    //    // CKim - Create event Object for signaling SDO read/write
-    //    //m_hSDO_Event = CreateEvent(NULL, FALSE, FALSE, _T("SDOEvent"));	//	null security, auto reset, initially non-signaled, name
-    //    sem_init(&m_hSDO_Sema,0,0);
+    if(err != 0)    {   return -1;  }
 
-    //    // CKim - Create event Object for signaling PDO read/write
-    //    //m_hPDO_Event = CreateEvent(NULL, FALSE, FALSE, _T("PDOEvent"));	//	null security, auto reset, initially non-signaled, name
-    //    //sem_init(&(ptr->m_hPDO_Sema),0,0);
+    // CKim - Map memory
+    // TxPDO1 : status word to buffer 8*0
+    if(pdoid == COBID_TXPDO1)   {
+        memcpy(&m_Slave[nodeId].data_.status_word,buff,2);
+    }
+    // TxPDO2 : actual pos/vel to 8*1 + 0/4 bytes;
+    if(pdoid == COBID_TXPDO2)   {
+        memcpy(&m_Slave[nodeId].data_.actual_pos, buff,4);
+        memcpy(&m_Slave[nodeId].data_.actual_vel, buff+4,4);
+    }
+}
 
-    //    // CKim - Receive response
-    //    long id;	int len;	char buf[8];	//int ext, rtr;
-
-    //    struct can_frame frame;     int nbytes;
-
+void* EposCAN::PDOSendThread(void* pData)
+{
+    EposCAN* self = (EposCAN*) pData;
     while (1)
     {
-        // CKim - Send RxPDO
-        // CKim - Call SYNC to tel/ devices to send TxPDO
-        // CKim - Read and Process TxPDO. Save to epos slave class.
-    //        // -------------------------------------------------------------
-    //        // CKim - Read CAN frame. SocketCAN uses 'read' functions
-    //        nbytes = read(m_hd,&frame,sizeof(struct can_frame));
+        for(int i=0; i<NUM_NODE; i++) {
+            self->SendRxPDOdata(i);
+        }
 
-    //        if (nbytes < 0) {
-    //            perror("can raw socket read");
-    //            break;//return 1;
-    //        }
+        // CKim - Call SYNC to tell slaves to update themselves using received RxPDO value
+        self->m_CANport.SendSYNC();
+        // report current status through TxPDO.
+    }
+    return 0;
+}
 
-    //        /* paranoid check ... */
-    //        if (nbytes < sizeof(struct can_frame)) {
-    //            fprintf(stderr, "read: incomplete CAN frame\n");
-    //            break;//return 1;
-    //        }
+void* EposCAN::PDOReadThread(void* pData)
+{
+    EposCAN* self = (EposCAN*) pData;
+    while (1)
+    {
+        // CKim - Call SYNC to tell slaves to report current status through TxPDO.
+        self->m_CANport.SendSYNC();
 
-    //        id = frame.can_id;
-    //        for(int i=0; i<8; i++)   {   buf[i] = frame.data[i];     }
-    //        // -------------------------------------------------------------
+        // CKim - Read TxPDO.
+        self-> ReadTxPDOdata();
+    }
+    return 0;
+}
 
-            // -------------------------------------------------------------
-            // CKim - Classify the object based on Command Object ID (COB-ID)
-    //        if ((id & TX_PDO1) == TX_PDO1)
-    //        {
-    //            // CKim - Notify device arrival of TxPDO
-    //            int nodeId = id - TX_PDO1;
-    //            //printf("TX_PDO1 from node %d\n", nodeId);
-    //            m_pDev[nodeId-1]->NotifyPDO(0,buf);
-    //        }
-    //        else if ((id & TX_PDO2) == TX_PDO2)
-    //        {
-    //            // CKim - Notify device arrival of TxPDO
-    //            int nodeId = id - TX_PDO2;
-    //            //printf("TX_PDO2 from node %d\n", nodeId);
-    //            m_pDev[nodeId-1]->NotifyPDO(1,buf);
-    //        }
-    //        else if ((id & TX_PDO3) == TX_PDO3)
-    //        {
-    //            // CKim - Notify device arrival of TxPDO
-    //            int nodeId = id - TX_PDO3;
-    //            //printf("TX_PDO3 from node %d\n", nodeId);
-    //            m_pDev[nodeId-1]->NotifyPDO(2,buf);
-    //        }
-    //        else if ((id & TX_PDO4) == TX_PDO4)
-    //        {
-    //            // CKim - Notify device arrival of TxPDO
-    //            int nodeId = id - TX_PDO4;
-    //            //printf("TX_PDO4 from node %d\n", nodeId);
-    //            m_pDev[nodeId-1]->NotifyPDO(3,buf);
-    //        }
-    //        else
-    //        {
-    //            // CKim - Other Data
-    //            printf("Unknown COB-ID 0x%04X  ", id);
-    //            for (int i = 0; i < len; i++)	{ printf("0x%02X ", (unsigned char)buf[i]); }
-    //            printf("\n");
-    //        }
-    }	// while
+void EposCAN::StartPdoExchange()
+{
+    for(int i=0; i<NUM_NODE; i++) {
+        ConfigureTxPDOs(i);
+        WriteTxPdoSettings(i);
+        ConfigureRxPDOs(i);
+        WriteRxPdoSettings(i);
+    }
+
+    sendFlag = readFlag = true;
+    pthrRead = std::make_shared<std::thread>(EposCAN::PDOReadThread,this);
+    pthrSend = std::make_shared<std::thread>(EposCAN::PDOSendThread,this);
+    //std::thread t1(EposCAN::PDOReadThread,this);
+    //std::thread t2(EposCAN::PDOSendThread,this);
+
+    //    // ---------------------------------------------------------------
+    //    // CKim - Launch CAN Read Thread
+    //    pthread_create(&m_hReadThrd, NULL, LinuxSocketCAN::CAN_ReadThread, 0);
+    //    // ---------------------------------------------------------------
+
 
 }
 
+void EposCAN::StopPdoExchange()
+{
+    sendFlag = readFlag = false;
+    pthrRead->join();
+    pthrSend->join();
+}
 // -----------------------------------------
 
 
@@ -940,60 +913,96 @@ int EposCAN::SetPositionControlGain(const uint16_t& P, const uint16_t& I, const 
 
 // -----------------------------------------
 
-int EposCAN::MovePosProfileUsingPDO(int32_t pos, bool rel)
-{
-    uint16_t cobId, cword;  char* tmp;  char sendBuff[4];   int err;
+//int EposCAN::NotifyPDO(int n, const char* buff)
+//{
+//    memcpy(m_TxPdoData+(8*n),buff,8);
+
+//    // ------------------------------------------------------
+//    // CKim - TxPDO1 is configured to be 16 bit status word
+//    if(n==0)
+//    {
+//        uint16_t status;	char* tmp = (char*)&status;
+//        for (int i = 0; i < 2; i++)	{ *(tmp + i) = buff[i]; }
+//        m_statusWord = status;
+
+//        // CKim - Notify motion complete. In profile position mode, bit [0-15] of the statusword
+//        // bit 12 and bit 10 is both 1;
+//        if((status & 0x1400) == 0x1400)
+//        {
+//            sem_post(&m_MotionSema);
+//        }
+//    }
+//    // ------------------------------------------------------
+
+////    // ------------------------------------------------------
+////    // CKim - TxPDO2 is configured to be 32 bit Position actual value
+////    uint32_t pos;       char* tmp = (char*)&pos;
+////    for (int i = 0; i < 4; i++)	{ *(tmp + i) = buf[i]; }
+
+////    // CKim - Copy to member variable - may need mutex here
+////    if (m_pDev[nodeId - 1])
+////    {
+////        m_pDev[nodeId - 1]->m_Position = pos;
+////        SetEvent(m_hPDO_Event);
+////    }
+////    // ------------------------------------------------------
+//}
+
+
+//int EposCAN::MovePosProfileUsingPDO(int32_t pos, bool rel)
+//{
+//    uint16_t cobId, cword;  char* tmp;  char sendBuff[4];   int err;
+
+////    // CKim - Write new Control Word : RxPDO1 0x6040  Sub 00 16 bit. Control Word
+////    cobId = RX_PDO1 + m_nodeId;
+////    tmp = (char*)&cword;
+////    cword = 0x000F;
+////    for (unsigned int i = 0; i<2; i++) {
+////        sendBuff[i] = *(tmp + i);    }
+
+////    err = m_CANport.SendRxPDO(cobId, 2, sendBuff);
+////    if (err == -1)	{ return -1; }
+
+//    // CKim - Write new target position value to RxPDO2 0x607A  Sub 00 32 bit. Target Position
+//    cobId = RX_PDO2 + m_nodeId;
+//    tmp = (char*)&pos;
+//    for (unsigned int i = 0; i<4; i++)    {
+//        sendBuff[i] = *(tmp + i);    }
+
+//    err = m_CANport.SendRxPDO(cobId, 4, sendBuff);
+//    if (err == -1)	{ return -1; }
 
 //    // CKim - Write new Control Word : RxPDO1 0x6040  Sub 00 16 bit. Control Word
 //    cobId = RX_PDO1 + m_nodeId;
 //    tmp = (char*)&cword;
-//    cword = 0x000F;
+//    if (rel) 	{ cword = 0x007F; }
+//    else		{ cword = 0x003F; }
 //    for (unsigned int i = 0; i<2; i++) {
 //        sendBuff[i] = *(tmp + i);    }
 
 //    err = m_CANport.SendRxPDO(cobId, 2, sendBuff);
 //    if (err == -1)	{ return -1; }
 
-    // CKim - Write new target position value to RxPDO2 0x607A  Sub 00 32 bit. Target Position
-    cobId = RX_PDO2 + m_nodeId;
-    tmp = (char*)&pos;
-    for (unsigned int i = 0; i<4; i++)    {
-        sendBuff[i] = *(tmp + i);    }
+//    return 0;
+// }
 
-    err = m_CANport.SendRxPDO(cobId, 4, sendBuff);
-    if (err == -1)	{ return -1; }
+//int EposCAN::GetPositionUsingPDO(int32_t& pos)
+//{
+//    // CKim - Send RTR. Request device to send its position, configured in TxPDO2
+//    // RTR is made by sending COB-ID of TxPDO2 with empty data with RTR bit set to 1
+//    // The bit is set by CAN_Send() with last argument rtr set to 1.
+//    uint16_t cobID = TX_PDO2 + m_nodeId;    char myBuff[8];
+////    int err = CAN_Send(m_hd, cobID, 0, myBuff, 0, 1);
 
-    // CKim - Write new Control Word : RxPDO1 0x6040  Sub 00 16 bit. Control Word
-    cobId = RX_PDO1 + m_nodeId;
-    tmp = (char*)&cword;
-    if (rel) 	{ cword = 0x007F; }
-    else		{ cword = 0x003F; }
-    for (unsigned int i = 0; i<2; i++) {
-        sendBuff[i] = *(tmp + i);    }
+////    if (err == 0)	{ m_errmsg = "Send error";  return -1;  }
 
-    err = m_CANport.SendRxPDO(cobId, 2, sendBuff);
-    if (err == -1)	{ return -1; }
+//    // CKim - Wait for PDO receive event
+////    DWORD res = WaitForSingleObject(m_hPDO_Event, 1000);
+////    if (res != WAIT_OBJECT_0)	{ m_errmsg = "Event Error\n";	return -1; }
 
-    return 0;
- }
-
-int EposCAN::GetPositionUsingPDO(int32_t& pos)
-{
-    // CKim - Send RTR. Request device to send its position, configured in TxPDO2
-    // RTR is made by sending COB-ID of TxPDO2 with empty data with RTR bit set to 1
-    // The bit is set by CAN_Send() with last argument rtr set to 1.
-    uint16_t cobID = TX_PDO2 + m_nodeId;    char myBuff[8];
-//    int err = CAN_Send(m_hd, cobID, 0, myBuff, 0, 1);
-
-//    if (err == 0)	{ m_errmsg = "Send error";  return -1;  }
-
-    // CKim - Wait for PDO receive event
-//    DWORD res = WaitForSingleObject(m_hPDO_Event, 1000);
-//    if (res != WAIT_OBJECT_0)	{ m_errmsg = "Event Error\n";	return -1; }
-
-    pos = m_Position;
-    return 0;
-}
+//    pos = m_Position;
+//    return 0;
+//}
 // -----------------------------------------
 
 
@@ -1129,3 +1138,45 @@ int EposCAN::GetPositionUsingPDO(int32_t& pos)
 
 //	return cobId;
 //}
+
+
+
+
+//uint16_t cword;     int32_t tgtPos;
+
+//// CKim - In my current configuration. Only RxPDO 1 and 2 needs to be sent.
+
+//// CKim - Send RxPDO1. 16 bit 'ControlWord' (0x6040 Sub 00)
+//cobId = COBID_RXPDO1 + nodeId;
+//buff = m_RxPDOsendBuff[nodeId];
+//memcpy(buff,&cword,m_Slave[nodeId].RpdoMap[0].2);
+//err = m_CANport.SendRxPDO(cobId, 2, buff);
+
+//// CKim - Send RxPDO1. 32 bit 'Target Position' (0x607A Sub 00)
+//cobId = COBID_RXPDO2 + nodeId;
+//buff = m_RxPDOsendBuff[nodeId]+8;
+//memcpy(buff,&tgtPos,4);
+//err = m_CANport.SendRxPDO(cobId, 4, buff);
+////    tmp = (char*)&pos;
+////    for (unsigned int i = 0; i<4; i++)    {
+////        sendBuff[i] = *(tmp + i);    }
+
+////    err = m_CANport.SendRxPDO(cobId, 4, sendBuff);
+////    if (err == -1)	{ return -1; }
+
+////    // CKim - Write new Control Word : RxPDO1 0x6040  Sub 00 16 bit. Control Word
+////    cobId = RX_PDO1 + m_nodeId;
+////    tmp = (char*)&cword;
+////    if (rel) 	{ cword = 0x007F; }
+////    else		{ cword = 0x003F; }
+////    for (unsigned int i = 0; i<2; i++) {
+////        sendBuff[i] = *(tmp + i);    }
+
+////    err = m_CANport.SendRxPDO(cobId, 2, sendBuff);
+////    if (err == -1)	{ return -1; }
+
+////    return 0;
+
+
+//}
+

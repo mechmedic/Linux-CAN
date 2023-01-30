@@ -4,18 +4,19 @@ CONFIG -= app_bundle
 CONFIG -= qt
 
 SOURCES += \
-    eposslave.cpp \
         main.cpp \
     linuxsocketcan.cpp \
     EposCAN.cpp \
-    windowsusb2can.cpp
+    windowsusb2can.cpp \
+    canslave.cpp
 
 HEADERS += \
     CANopenDefs.h \
-    eposslave.h \
     linuxsocketcan.h \
     EposCAN.h \
-    windowsusb2can.h
+    windowsusb2can.h \
+    canslave.h \
+    object_dictionary.hpp
 
 LIBS += -lpthread
 

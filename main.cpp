@@ -12,7 +12,7 @@ int numNodes = NUM_NODE;
 EposCAN* pDev;
 
 
-sem_t sema;
+//sem_t sema;
 
 int TestProfilePosition()
 {
