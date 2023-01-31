@@ -429,6 +429,7 @@ int main()
 
         PosPara.ProfileAccel = PosPara.ProfileDecel = 10000;
         PosPara.MaxProfileVelocity = 5000;
+        PosPara.ProfileVelocity = 5000;
 
         res = pDev->SetPositionProfileParam(i,PosPara);
         if (res == -1)
@@ -444,7 +445,8 @@ int main()
         //data = pDev->m_Slave[0].data_;
 
         // CKim - Update RxPDO data
-        pDev->m_Slave[0].data_.target_pos = 5000*i;
+//        pDev->m_Slave[0].data_.target_pos = 50000*i;
+        pDev->m_Slave[0].data_.target_pos = 100000*i;
         pDev->m_Slave[0].data_.control_word = 0x003F;   // Absolute
 
         // CKim -Read data updated from TxPDO
@@ -452,7 +454,8 @@ int main()
         std::cout<<"Position : "<<pDev->m_Slave[0].data_.actual_pos << std::endl;
         std::cout<<"Velocity : "<<pDev->m_Slave[0].data_.actual_vel << std::endl;
 
-        sleep(2);
+        sleep(1);
+
     }
     //sleep(10);
     pDev->StopPdoExchange();

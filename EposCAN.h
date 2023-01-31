@@ -66,6 +66,7 @@ private:
 
     // CKim - Mode of the EPOS controller (profile position, homing, velocity ...)
 	int			m_mode;
+    int         m_totalTxPdoNum;
 
 
     // CKim - PDO Specific.....
@@ -216,6 +217,9 @@ private:
 
     // CKim - RxPDO Sending thread. Update this function when TxPDO map changes
     static void* RxPDOSendThread(void* pData);
+
+    // CKim - Cyclic PDO Exchange Thread. All TxPDOshould be configured to SYNC
+    static void* CyclicPDOThread(void* pData);
 
 
     std::shared_ptr<std::thread> pthrSend;

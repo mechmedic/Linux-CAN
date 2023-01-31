@@ -590,7 +590,7 @@ int EposCAN::ConfigureTxPDOs(int idx)
 
     // CKim - TxPDO1. 16 bit 'Status word' (0x6041 Sub 00), Transmit on change (255) within 1 ms.
     m_Slave[idx].TpdoParam[0].COB_ID = COBID_TXPDO1 + nodeId;
-    m_Slave[idx].TpdoParam[0].TransmissionType = TXPDO_TRANSMIT_ON_CHANGE;
+    m_Slave[idx].TpdoParam[0].TransmissionType = TXPDO_TRANSMIT_ON_SYNC;;//TXPDO_TRANSMIT_ON_CHANGE;
     m_Slave[idx].TpdoParam[0].InhibitTime = 10;  // multiples of 100us = 1 ms..TransmissionType = 255;
 
     m_Slave[idx].TpdoMap[0].NumberOfMappedObject = 1;
@@ -623,6 +623,9 @@ int EposCAN::ConfigureTxPDOs(int idx)
     m_Slave[idx].TpdoMap[3] = m_Slave[idx].TpdoMap[0];
     m_Slave[idx].TpdoParam[3].COB_ID = COBID_TXPDO4 + nodeId;
     m_Slave[idx].TpdoMap[3].NumberOfMappedObject = 0;
+
+    // CKim - Update Number of Total TxPDO
+    m_totalTxPdoNum = 2;
 
     return 0;
 }
@@ -711,8 +714,8 @@ void* EposCAN::RxPDOSendThread(void* pData)
 
         // CKim - Call SYNC to tell slaves to update themselves using received RxPDO value
         // Also tells slaves to report current status through TxPDO.
-        self->m_CANport.SendSYNC();
-        usleep(10000);
+//        self->m_CANport.SendSYNC();
+//        usleep(2000);
     }
     printf("Leaving RxPDOSend Thread\n");
     return 0;
@@ -722,13 +725,16 @@ void* EposCAN::TxPDOReadThread(void* pData)
 {
     EposCAN* self = (EposCAN*) pData;
     int nodeId, pdoid;      int err;    char buff[8];
-    //int cnt = 0;  int cnt1 = 0;   int cnt2 = 0;
+    int cnt = 0;  int cnt1 = 0;   int cnt2 = 0;
     while (self->readFlag)
     {
 //        printf("Read Thread count %d\n",cnt++);
 
         // CKim - Call SYNC to tell slaves to report current status through TxPDO.
-//        self->m_CANport.SendSYNC();
+        if(cnt1 == cnt2)    {
+//            printf("Synchronizing\n",cnt++);
+            self->m_CANport.SendSYNC();
+        }
 
         // CKim - Read TxPDO.
         err = m_CANport.ReadTxPDO(nodeId,pdoid,buff);
@@ -741,20 +747,100 @@ void* EposCAN::TxPDOReadThread(void* pData)
         // TxPDO1 : status word to buffer 8*0
         if(pdoid == COBID_TXPDO1)   {
             memcpy(&(self->m_Slave[idx]).data_.status_word,buff,2);
-            //cnt1++;
+            cnt1++;
         }
         // TxPDO2 : actual pos/vel to 8*1 + 0/4 bytes;
         if(pdoid == COBID_TXPDO2)   {
             memcpy(&(self->m_Slave[idx]).data_.actual_pos, buff,4);
             memcpy(&(self->m_Slave[idx]).data_.actual_vel, buff+4,4);
-            //cnt2++;
+            cnt2++;
         }
 
         // ------------------------------------------ //
-        usleep(5000);
+        //usleep(5000);
     }
     printf("Leaving TxPDOReadThread\n");
-    //printf("TxPDO1 %d TxPDO2 %d\n",cnt1,cnt2);
+    printf("TxPDO1 %d TxPDO2 %d\n",cnt1,cnt2);
+    return 0;
+}
+
+void* EposCAN::CyclicPDOThread(void* pData)
+{
+    EposCAN* self = (EposCAN*) pData;
+    uint16_t cobId;  char* sendBuff;     char readBuff[8];
+    int nbytes;     int err;   int nodeId;   int pdoid;     int pdocnt;
+
+    while (self->sendFlag)
+    {
+        // ------------------------------------------ //
+        // CKim - Update Data to send over RxPDO
+        // Edit this part when PDO map changes
+        // Copy data to m_RxPDOsendBuff
+        for(int idx=0; idx<NUM_NODE; idx++)
+        {
+            // RxPDO1 : control word (2 byte) to buffer 8*0
+            memcpy(self->m_RxPDOsendBuff[idx],&(self->m_Slave[idx]).data_.control_word,2);
+            // RxPDO2 : target position (4 byte) to 8*1 + 0 bytes;
+            memcpy(self->m_RxPDOsendBuff[idx]+8,&(self->m_Slave[idx]).data_.target_pos,4);
+        }
+        // ------------------------------------------ //
+
+        // CKim - For each device, send RxPDO1 to 4
+        for(int idx=0; idx<NUM_NODE; idx++)
+        {
+            nodeId = self->m_Slave[idx].m_nodeId;
+            for(int n=0; n<4; n++)
+            {
+                cobId = COBID_RXPDO1 + (0x00000100*n) + nodeId;
+                sendBuff = self->m_RxPDOsendBuff[idx]+(8*n);
+                for(int i=0; i<self->m_Slave[idx].RpdoMap[n].NumberOfMappedObject; i++)
+                {
+                    nbytes = (self->m_Slave[idx].RpdoMap[n].ObjSz[i])/8;
+                    //printf("Writing item %d of RxPDO%d of Node %d\n",i+1,n+1,nodeId);
+                    err = m_CANport.SendRxPDO(cobId, nbytes, sendBuff);
+                    if(err != 0)
+                    {
+                        printf("Error Writing item %d of RxPDO%d of Node %d in RxPDOSendThread\n",i+1,n+1,nodeId);
+                        break;
+                    }
+                    sendBuff = self->m_RxPDOsendBuff[idx] + self->m_Slave[idx].RpdoMap[n].ObjSz[i];
+                }
+            }
+        }
+
+        // CKim - Call SYNC to tell slaves to update themselves using received RxPDO value
+        // Also tell slaves to report current status through TxPDO.
+        self->m_CANport.SendSYNC();
+
+        // CKim - All slaves will send TxPDO once per SYNC signale.
+        // Make sure all PDOs are read before returning to RxPDO send
+        pdocnt = 0;
+        while(pdocnt != self->m_totalTxPdoNum)
+        {
+            // CKim - Read TxPDO.
+            err = m_CANport.ReadTxPDO(nodeId,pdoid,readBuff);
+            if(err != 0)    {   printf("TxPDOReadThread Error\n");  break;   }
+
+            // ------------------------------------------ //
+            // CKim - Map memory. Update this part when PDO map changes
+            // 1. Find index corresponding to the nodeId
+            int idx = nodeId-1;
+            // TxPDO1 : status word to buffer 8*0
+            if(pdoid == COBID_TXPDO1)   {
+                memcpy(&(self->m_Slave[idx]).data_.status_word,readBuff,2);
+                pdocnt++;
+            }
+            // TxPDO2 : actual pos/vel to 8*1 + 0/4 bytes;
+            if(pdoid == COBID_TXPDO2)   {
+                memcpy(&(self->m_Slave[idx]).data_.actual_pos, readBuff,4);
+                memcpy(&(self->m_Slave[idx]).data_.actual_vel, readBuff+4,4);
+                pdocnt++;
+            }
+            // ------------------------------------------ //
+        }
+        usleep(1000);
+    }
+    printf("Leaving CyclicPDO Thread\n");
     return 0;
 }
 
@@ -785,22 +871,23 @@ void EposCAN::StartPdoExchange()
     printf("Starting thread\n");
     sendFlag = true;
     readFlag = true;
-    pthrRead = std::make_shared<std::thread>(EposCAN::TxPDOReadThread,this);
-    pthrSend = std::make_shared<std::thread>(EposCAN::RxPDOSendThread,this);
+    //pthrRead = std::make_shared<std::thread>(EposCAN::TxPDOReadThread,this);
+    //pthrSend = std::make_shared<std::thread>(EposCAN::RxPDOSendThread,this);
+    pthrRead = std::make_shared<std::thread>(EposCAN::CyclicPDOThread,this);
 }
 
 void EposCAN::StopPdoExchange()
 {
-    printf("Disabling PDO\n");
-    for(int i=0; i<NUM_NODE; i++) {
-        DisablePDO(i);
-    }
-
     printf("Stopping thread\n");
     sendFlag = false;
     readFlag = false;
     pthrRead->join();
-    pthrSend->join();
+    //pthrSend->join();
+
+    printf("Disabling PDO\n");
+    for(int i=0; i<NUM_NODE; i++) {
+        DisablePDO(i);
+    }
 
 
     // CKim - Clear buffer

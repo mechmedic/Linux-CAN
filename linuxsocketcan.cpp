@@ -14,6 +14,7 @@ int LinuxSocketCAN::m_hd = -1;                // CKim - Socket Handle. For pi2ca
 LinuxSocketCAN::LinuxSocketCAN()
 {
 
+    // Memo :sudo ifconfig can0 txqueuelen 1000
 }
 
 LinuxSocketCAN::~LinuxSocketCAN()
@@ -73,8 +74,6 @@ int LinuxSocketCAN::CloseCANport()
 
 int LinuxSocketCAN::SendSYNC()
 {
-    std::ostringstream ostr;
-
     // CKim - Communication Object ID (COB-ID) of SYNC object
     uint16_t cobIDforSYNC = COBID_SYNC;
     struct can_frame frame;
@@ -86,9 +85,7 @@ int LinuxSocketCAN::SendSYNC()
     // CKim - Use write() on socket to send CAN data
     nbytes = write(m_hd, &frame, sizeof(frame));
     if (nbytes != sizeof(frame)) {
-        ostr << "[SocketCAN] error during 'write()' in SendSYNC" << std::endl;
-        m_errMsg = ostr.str();
-        std::cerr << m_errMsg;
+        perror("[SocketCAN] error during 'write()' in SendSYNC ");
         return -1;
     }
 
@@ -98,8 +95,6 @@ int LinuxSocketCAN::SendSYNC()
 
 int LinuxSocketCAN::SendNMT(int state, int nodeId)
 {
-    std::ostringstream ostr;
-
     // CKim - Switch slave to 'Operational' state.
     // COB-ID = 0, data[0] = 0x01, data[1] = nodeId, (0 for all)
     // NMT operational state is indicated by bit 9 of the status word.
@@ -113,13 +108,11 @@ int LinuxSocketCAN::SendNMT(int state, int nodeId)
     // CKim - Use write() on socket to send CAN data
     nbytes = write(m_hd, &frame, sizeof(frame));
     if (nbytes != sizeof(frame)) {
-        ostr << "[SocketCAN] error during 'write()' in SendNMT" << std::endl;
-        m_errMsg = ostr.str();
-        std::cerr << m_errMsg;
+        perror("[SocketCAN] error during 'write()' in SendNMT ");
         return -1;
     }
 
-    std::cout << "[SocketCAN] Sent NMT message" << std::endl;
+    //std::cout << "[SocketCAN] Sent NMT message" << std::endl;
     return 0;
 }
 
@@ -364,7 +357,7 @@ int LinuxSocketCAN::ReadTxPDO(int& nodeId, int& PdoId, char* buff)
     if(PdoId == COBID_TXPDO4)       {   nodeId = id - COBID_TXPDO4;     return 0;   }
 
     // CKim - Otherwise. Non. PDO COB-ID
-     printf("[SocketCAN] invalid COB-ID 0x%04X in ReadTxPDO", frame.can_id);
+     printf("[SocketCAN] invalid COB-ID 0x%04X in ReadTxPDO\n", frame.can_id);
      return -1;
 }
 
