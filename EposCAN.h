@@ -41,6 +41,8 @@
 #include <time.h>
 #include <thread>
 #include <memory>
+#include <unistd.h>
+
 
 // CKim - Class Encapsulating CAN interface of the Maxon EPOS2
 class EposCAN
@@ -48,7 +50,9 @@ class EposCAN
 
 public:
 	bool m_CANportOpen;	// Other status variables of the Node. 
-	bool m_PDOready;
+
+    // CKim - Slaves
+    CANSlave    m_Slave[NUM_NODE];
 
     // CKim - Motion limit parameters may be needed....
 
@@ -63,14 +67,12 @@ private:
     // CKim - Mode of the EPOS controller (profile position, homing, velocity ...)
 	int			m_mode;
 
-    // CKim - Slaves
-    CANSlave    m_Slave[NUM_NODE];
 
     // CKim - PDO Specific.....
     char        m_TxPdoData[32];    // CKim - Store data from TxPDO1-4
-	uint16_t	m_statusWord;
+    uint16_t	m_statusWord;
     uint16_t	m_prevStatusWord;
-	uint32_t	m_Position;
+    uint32_t	m_Position;
 
     //sem_t       m_MotionSema;
 
@@ -94,11 +96,11 @@ public:
 
     /**
      * @brief Enable / Disable the device with nodeId
-     * @param nodeId : Node ID
+     * @param idx : Index of the Node. Different from the Node ID
      * @return 0 on sucess, otherwise -1
      */
-    int EnableDevice(int nodeId);
-    int DisableDevice(int nodeId);
+    int EnableDevice(int idx);
+    int DisableDevice(int idx);
 
     /**
      * @brief Enable / Disable all the device in network
@@ -110,67 +112,56 @@ public:
     /**
      * @brief SetOperationMode of the device with nodeId.
      * Operation modes are defined as enum OP_MODE in the header
-     * @param nodeId : Node ID
+     * @param idx : Index of the Node. Different from the Node ID
      * @return 0 on sucess, otherwise -1
      */
-    int SetOperationMode(int nodeId, int mode);
+    int SetOperationMode(int idx, int mode);
     int SetOperationModeAll(int mode);
 
     // -------------------------------------------
 
     /**
      * @brief Various read function using SDO read
+     * @param idx : Index of the Node. Different from the Node ID
      * @return 0 on sucess, otherwise -1
      */
-    uint16_t ReadControlWord(int nodeId);
-    uint16_t ReadStatusWord(int nodeId);
-    int ReadPosition(int nodeId);
+    uint16_t ReadControlWord(int idx);
+    uint16_t ReadStatusWord(int idx);
+    int ReadPosition(int idx);
 
     /**
      * @brief Halt motion by setting status word
+     * @param idx : Index of the Node. Different from the Node ID
      * @return 0 on sucess, otherwise -1
      */
-    int HaltAxis(int nodeId);
+    int HaltAxis(int idx);
     int HaltAxisAll();
 
     // -------------------------------------------
 	// CKim - Get/Set Position Profile Motion Parameter
-    int GetPositionProfileParam(int nodeId, ProfilePosParam& P);
-    int SetPositionProfileParam(int nodeId, const ProfilePosParam& P);
+    int GetPositionProfileParam(int idx, ProfilePosParam& P);
+    int SetPositionProfileParam(int idx, const ProfilePosParam& P);
 
     // CKim - Move to target position
-    int MovePosProfile(int nodeId, int32_t pos, bool rel);
+    int MovePosProfile(int idx, int32_t pos, bool rel);
 
     // CKim - Wait for Profile Motion Completion
-    int WaitForMotionCompletion(int nodeId, long timeoutmsec);
+    int WaitForMotionCompletion(int idx, long timeoutmsec);
     int WaitForMotionCompletionAll(long timeoutmsec);
 
     // -------------------------------------------
     // CKim - Get/Set Velocity Profile Motion Parameter
-    int GetVelocityProfileParam(int nodeId, ProfileVelParam& P);
-    int SetVelocityProfileParam(int nodeId, const ProfileVelParam& P);
+    int GetVelocityProfileParam(int idx, ProfileVelParam& P);
+    int SetVelocityProfileParam(int idx, const ProfileVelParam& P);
 
     // CKim - Move in target velocity. Unit is in rpm
-    int MoveVelProfile(int nodeId, int32_t vel);
+    int MoveVelProfile(int idx, int32_t vel);
 
-    // -------------------------------------------
-    // CKim - Enable/Disable PDO by sending NMT message
-    int EnablePDO(int nodeId);
-    int DisablePDO(int nodeId);
 
-    // CKim - Write configured PDOs to slaves.
-    int WriteTxPdoSettings(int nodeId);
-    int WriteRxPdoSettings(int nodeId);
 
-    // CKim - Hack these two functions to change parameters and mappings of PDO 1-4 of the device.
-    // This configures PDO parameters and data mapping of the EPOS
-    // TxPDO is from EPOS to PC. RxPDO is from PC to EPOS. Both 8 bytes
-    int ConfigureTxPDOs(int nodeId);
-    int ConfigureRxPDOs(int nodeId);
-
-    // CKim - Hack these two functions to map device data to PDO data
-    int SendRxPDOdata(int nodeId);
-    int ReadTxPDOdata();
+    // CKim - Start PDO communication
+    void StartPdoExchange();
+    void StopPdoExchange();
 
     // -------------------------------------------
     // CKim - Get/Set Homing parameters
@@ -205,22 +196,32 @@ private:
     int SDO_write(SDO_data* d)  {   return m_CANport.SendSDO(d,SDO_WRITE);    };
     int SDO_read(SDO_data* d)   {   return m_CANport.SendSDO(d,SDO_READ);    };
 
-    // CKim - Start PDO communication
-    void StartPdoExchange();
-    void StopPdoExchange();
+    // -------------------------------------------
+    // CKim - Enable/Disable PDO by sending NMT message
+    int EnablePDO(int idx);
+    int DisablePDO(int idx);
 
-    // CKim - PDO Exchange functions running in separate thread
-    static void* PDOReadThread(void* pData);
+    // CKim - Write configured PDOs to slaves.
+    int WriteTxPdoSettings(int idx);
+    int WriteRxPdoSettings(int idx);
 
-    // CKim - PDO Exchange functions running in separate thread
-    static void* PDOSendThread(void* pData);
+    // CKim - Hack these two functions to change parameters and mappings of PDO 1-4 of the device.
+    // This configures PDO parameters and data mapping of the EPOS
+    // TxPDO is from EPOS to PC. RxPDO is from PC to EPOS. Both 8 bytes
+    int ConfigureTxPDOs(int idx);
+    int ConfigureRxPDOs(int idx);
+
+    // CKim - TxPDO Reading thread. Update this function when TxPDO map changes
+    static void* TxPDOReadThread(void* pData);
+
+    // CKim - RxPDO Sending thread. Update this function when TxPDO map changes
+    static void* RxPDOSendThread(void* pData);
 
 
     std::shared_ptr<std::thread> pthrSend;
     std::shared_ptr<std::thread> pthrRead;
 
     char* m_RxPDOsendBuff[NUM_NODE];
-    //char* m_TxPDOreadBuff[NUM_NODE];
 
     bool sendFlag;
     bool readFlag;

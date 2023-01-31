@@ -121,7 +121,6 @@ private:
      * @brief  Parse CAN Frame into SDO_data
      */
     int FrameToSdo(const struct can_frame& frame, SDO_data* sdo);
-
 };
 
 #endif // LINUXSOCKETCAN_H

@@ -86,18 +86,20 @@ int LinuxSocketCAN::SendSYNC()
     // CKim - Use write() on socket to send CAN data
     nbytes = write(m_hd, &frame, sizeof(frame));
     if (nbytes != sizeof(frame)) {
-        ostr << "[SocketCAN] error during 'write()" << std::endl;
+        ostr << "[SocketCAN] error during 'write()' in SendSYNC" << std::endl;
         m_errMsg = ostr.str();
         std::cerr << m_errMsg;
         return -1;
     }
 
-    std::cout << "[SocketCAN] SentSYNC" << std::endl;
+    //std::cout << "[SocketCAN] SentSYNC" << std::endl;
     return 0;
 }
 
 int LinuxSocketCAN::SendNMT(int state, int nodeId)
 {
+    std::ostringstream ostr;
+
     // CKim - Switch slave to 'Operational' state.
     // COB-ID = 0, data[0] = 0x01, data[1] = nodeId, (0 for all)
     // NMT operational state is indicated by bit 9 of the status word.
@@ -111,11 +113,13 @@ int LinuxSocketCAN::SendNMT(int state, int nodeId)
     // CKim - Use write() on socket to send CAN data
     nbytes = write(m_hd, &frame, sizeof(frame));
     if (nbytes != sizeof(frame)) {
-        perror("write");
+        ostr << "[SocketCAN] error during 'write()' in SendNMT" << std::endl;
+        m_errMsg = ostr.str();
+        std::cerr << m_errMsg;
         return -1;
     }
 
-    printf("Sent NMT message\n");
+    std::cout << "[SocketCAN] Sent NMT message" << std::endl;
     return 0;
 }
 
@@ -167,7 +171,7 @@ int LinuxSocketCAN::SendSDO(SDO_data* sdo, int rw)
     // CKim - Use write() on socket to send CAN data
     nbytes = write(m_hd, &sendFrame, sizeof(sendFrame));
     if (nbytes != sizeof(sendFrame)) {
-        ostr << "[SocketCAN] CAN frame write Error" << std::endl;
+        ostr << "[SocketCAN] CAN frame write error in SendSDO" << std::endl;
         m_errMsg = ostr.str();
         std::cerr << m_errMsg;
         return -1;
@@ -182,7 +186,7 @@ int LinuxSocketCAN::SendSDO(SDO_data* sdo, int rw)
     struct can_frame readFrame;         SDO_data rcvSdo;
     nbytes = read(m_hd,&readFrame,sizeof(struct can_frame));
     if (nbytes < 0) {
-        ostr << "[SocketCAN] can raw socket read" << std::endl;
+        ostr << "[SocketCAN] can raw socket read in SendSDO" << std::endl;
         m_errMsg = ostr.str();
         std::cerr << m_errMsg;
         return -1;
@@ -190,7 +194,7 @@ int LinuxSocketCAN::SendSDO(SDO_data* sdo, int rw)
 
     /* paranoid check ... */
     if (nbytes < sizeof(struct can_frame)) {
-        ostr << "[SocketCAN] read: incomplete CAN frame" << std::endl;
+        ostr << "[SocketCAN] read: incomplete CAN frame in SendSDO" << std::endl;
         m_errMsg = ostr.str();
         std::cerr << m_errMsg;
         return -1;
@@ -319,26 +323,27 @@ int LinuxSocketCAN::SendRxPDO(int COBID, int sz, char* buff)
         std::cerr << m_errMsg;
         return -1;
     }
-    printf("[SocketCAN] Sent RxPDO Packet. COB-ID : 0x%04X\n",COBID);
+    //printf("[SocketCAN] Sent RxPDO Packet. COB-ID : 0x%04X\n",COBID);
     return 0;
 }
 
 int LinuxSocketCAN::ReadTxPDO(int& nodeId, int& PdoId, char* buff)
 {
+    std::ostringstream ostr;
     struct can_frame frame;         int nbytes;
 
     // CKim - Read CAN frame. SocketCAN uses 'read' functions
     nbytes = read(m_hd,&frame,sizeof(struct can_frame));
 
     if (nbytes < 0) {
-        m_errMsg = "[SocketCAN] TxPDO read error\n";
+        m_errMsg = "[SocketCAN] read error in ReadTxPDO\n";
         std::cerr << m_errMsg;
         return -1;
     }
 
     /* paranoid check ... */
     if (nbytes < sizeof(struct can_frame)) {
-        m_errMsg = "[SocketCAN] TxPDO read incomplete CAN frame\n";
+        m_errMsg = "[SocketCAN] read incomplete CAN frame in ReadTxPDO\n";
         std::cerr << m_errMsg;
         return -1;
     }
@@ -351,14 +356,16 @@ int LinuxSocketCAN::ReadTxPDO(int& nodeId, int& PdoId, char* buff)
 
     PdoId = (id & COBID_TXPDO1);
     if(PdoId == COBID_TXPDO1)       {   nodeId = id - COBID_TXPDO1;     return 0;   }
-    else if(PdoId == COBID_TXPDO2)  {   nodeId = id - COBID_TXPDO2;     return 0;   }
-    else if(PdoId == COBID_TXPDO3)  {   nodeId = id - COBID_TXPDO3;     return 0;   }
-    else if(PdoId == COBID_TXPDO4)  {   nodeId = id - COBID_TXPDO4;     return 0;   }
-    else {
-        m_errMsg = "[SocketCAN] TxPDO read invalid COB-ID\n";
-        std::cerr << m_errMsg;
-        return -1;
-    }
+    PdoId = (id & COBID_TXPDO2);
+    if(PdoId == COBID_TXPDO2)       {   nodeId = id - COBID_TXPDO2;     return 0;   }
+    PdoId = (id & COBID_TXPDO3);
+    if(PdoId == COBID_TXPDO3)       {   nodeId = id - COBID_TXPDO3;     return 0;   }
+    PdoId = (id & COBID_TXPDO4);
+    if(PdoId == COBID_TXPDO4)       {   nodeId = id - COBID_TXPDO4;     return 0;   }
+
+    // CKim - Otherwise. Non. PDO COB-ID
+     printf("[SocketCAN] invalid COB-ID 0x%04X in ReadTxPDO", frame.can_id);
+     return -1;
 }
 
 

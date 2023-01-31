@@ -19,7 +19,7 @@ int TestProfilePosition()
     // ---------------------------------------------------------------
     // CKim - Enable Position Control Mode
     ProfilePosParam PosPara;
-    for (int i=1; i<(1+numNodes); i++)
+    for (int i=0; i<NUM_NODE; i++)
     {
         res = pDev->SetOperationMode(i, PROFILE_POS);
         if (res == -1)
@@ -65,7 +65,7 @@ int TestProfilePosition()
     // CKim - Measure time when sending target position by SDO
     pos = 500000;
     clock_gettime(CLOCK_REALTIME,&start);
-    for (int i=1; i<(1+numNodes); i++)
+    for (int i=0; i<NUM_NODE; i++)
     {
         res = pDev->MovePosProfile(i, pos, true);
         //res = pDev[0]->MovePosProfile(pos, false);
@@ -79,7 +79,8 @@ int TestProfilePosition()
     //res = pDev->WaitForMotionCompletion(1,500);
     res = pDev->WaitForMotionCompletionAll(500);
     if(res!=0) {
-        res = pDev->HaltAxis(1);
+        //res = pDev->HaltAxis(0);
+        res = pDev->HaltAxisAll();
     }
 
     clock_gettime(CLOCK_REALTIME,&end);
@@ -89,7 +90,7 @@ int TestProfilePosition()
 
     //sleep(5);
 
-    for (int i=1; i<(1+numNodes); i++)
+    for (int i=0; i<NUM_NODE; i++)
     {
         printf("Control : 0x%04X, Status : 0x%04X\n", pDev->ReadControlWord(i), pDev->ReadStatusWord(i));
         printf("Current Position : %d\n", pDev->ReadPosition(i));
@@ -103,7 +104,7 @@ int TestProfileVelocity()
     // ------------------------------------------------
     // CKim - Setup Profile Velocity Control Mode
     ProfileVelParam VelPara;
-    for(int i=1; i<(1+numNodes); i++)
+    for (int i=0; i<NUM_NODE; i++)
     {
         res = pDev->SetOperationMode(i, PROFILE_VEL);
         res = pDev->GetVelocityProfileParam(i, VelPara);
@@ -131,7 +132,7 @@ int TestProfileVelocity()
 
     // CKim - Move one direction
     printf("Moving Forward\n");
-    for(int i=1; i<(1+numNodes); i++)
+    for (int i=0; i<NUM_NODE; i++)
     {
         res = pDev->MoveVelProfile(i, 5000);
         if (res == -1)
@@ -144,7 +145,7 @@ int TestProfileVelocity()
 
     // CKim - Move the other direction
     printf("Moving Backward\n");
-    for(int i=1; i<(1+numNodes); i++)
+    for (int i=0; i<NUM_NODE; i++)
     {
         res = pDev->MoveVelProfile(i, -5000);
         if (res == -1)
@@ -157,7 +158,7 @@ int TestProfileVelocity()
 
     // CKim - Stop
     printf("Stopping\n");
-    for(int i=1; i<(1+numNodes); i++)
+    for (int i=0; i<NUM_NODE; i++)
     {
         res = pDev->HaltAxis(i);
         if (res == -1)
@@ -371,8 +372,11 @@ int main()
     // CKim - Create EposCAN object.
     pDev = new EposCAN();
 
+    // CKim - Set nodeId for all Slaves 0 to NUM_NODE-1
+
+
     // CKim - Switch On and Enable Device
-    for (int i=1; i<(1+numNodes); i++)
+    for (int i=0; i<NUM_NODE; i++)
     {
         res = pDev->EnableDevice(i);
         if (res != 0)
@@ -391,29 +395,67 @@ int main()
     int a;
     std::cin >> a;
 
-//    // -----------------------------------------------
-//    // CKim - Configure TxPDO1 and RxPDO1
-//    for (int i=0; i<numNodes; i++)
-//    {
-//        res = pDev->DisablePDO();        if (res == -1)	{  break;    }
-//        res = pDev->ConfigureTxPDO();    if (res == -1)	{  break;    }
-//        res = pDev->ConfigureRxPDO();    if (res == -1)	{  break;    }
-//        //res = pDev->SetTxPDOMapping(1);		if (res == -1)	{ break; }
-//        //res = pDev->SetRxPDOMapping(1);		if (res == -1)	{ break; }
-//        res = pDev->EnablePDO();         if (res == -1)	{  break;    }
-//    }
-//    if (res == -1)
-//    {
-//        printf("Error while configuring PDO\n");
-//        cout << pDev[0]->GetErrorMsg() << endl;
-//        return 0;
-//    }
-//    // -----------------------------------------------
+    // CKim - Profile Position Test
+    //TestProfilePosition();
 
-    //sleep(2);
+    // CKim - Profile Velocity Test
+//    TestProfileVelocity();
 
-    TestProfilePosition();
-    //TestProfileVelocity();
+    // CKim - Test PDO
+    // CKim - Enable Position Control Mode
+    ProfilePosParam PosPara;
+    for (int i=0; i<NUM_NODE; i++)
+    {
+        res = pDev->SetOperationMode(i, PROFILE_POS);
+        if (res == -1)
+        {
+            printf("Failed to set PosProfile Mode, device %d\n", pDev->GetId());
+            return -1;
+        }
+
+        res = pDev->GetPositionProfileParam(i, PosPara);
+        if (res == -1)
+        {
+            printf("Param Reading Error\n");
+            return -1;
+        }
+        else
+        {
+            printf("Node %d ProfilePos Params\n",i);
+            printf("MaxVel: %d,  QuickDecel: %d,  Acc: %d,  Decel: %d  Following Errr: %d  Vel: %d\n",
+                   PosPara.MaxProfileVelocity, PosPara.QuickStopDecel, PosPara.ProfileAccel, PosPara.ProfileDecel,
+                   PosPara.MaxFollowingError, PosPara.ProfileVelocity);
+        }
+
+        PosPara.ProfileAccel = PosPara.ProfileDecel = 10000;
+        PosPara.MaxProfileVelocity = 5000;
+
+        res = pDev->SetPositionProfileParam(i,PosPara);
+        if (res == -1)
+        {
+            printf("Param Setting Error\n");
+            return -1;
+        }
+    }
+    pDev->StartPdoExchange();
+    //ReceivedData data;
+    for (int i=0; i<10; i++)
+    {
+        //data = pDev->m_Slave[0].data_;
+
+        // CKim - Update RxPDO data
+        pDev->m_Slave[0].data_.target_pos = 5000*i;
+        pDev->m_Slave[0].data_.control_word = 0x003F;   // Absolute
+
+        // CKim -Read data updated from TxPDO
+        printf("Status word 0x%04X\n", pDev->m_Slave[0].data_.status_word);
+        std::cout<<"Position : "<<pDev->m_Slave[0].data_.actual_pos << std::endl;
+        std::cout<<"Velocity : "<<pDev->m_Slave[0].data_.actual_vel << std::endl;
+
+        sleep(2);
+    }
+    //sleep(10);
+    pDev->StopPdoExchange();
 
     //TestHoming();
     //TestOscillatingMotion();
@@ -422,7 +464,7 @@ int main()
 
 
     // CKim - Disable Device
-    for (int i=1; i<(1+numNodes); i++)
+    for (int i=0; i<NUM_NODE; i++)
     {
         res = pDev->DisableDevice(i);
         if (res != 0)
